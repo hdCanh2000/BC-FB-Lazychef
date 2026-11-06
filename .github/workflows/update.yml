@@ -1,0 +1,27 @@
+name: Cap nhat du lieu FB Ads
+
+on:
+  schedule:
+    - cron: "0 0 * * *"   # 7:00 sang gio Viet Nam moi ngay
+  workflow_dispatch:       # cho phep bam chay thu bang tay
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cai thu vien
+        run: pip install gspread google-auth
+
+      - name: Lay du lieu FB Ads va ghi vao Google Sheet
+        env:
+          FB_ACCESS_TOKEN: ${{ secrets.FB_ACCESS_TOKEN }}
+          FB_AD_ACCOUNT_ID: ${{ secrets.FB_AD_ACCOUNT_ID }}
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: python fetch_data.py
