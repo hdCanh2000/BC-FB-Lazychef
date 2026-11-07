@@ -153,3 +153,65 @@ for i in range(0, len(all_rows), BATCH):
               value_input_option="RAW")
 
 print(f"Xong: lay moi {len(new_rows)} dong, tong cong {len(all_rows)} dong trong tab {TAB_NAME}")
+
+
+# ================= XUAT data.json CHO TRANG BAO CAO =================
+from datetime import date
+
+
+def to_iso_date(v):
+    if isinstance(v, (int, float)) and v > 30000:      # ngay dang so cua Google Sheet
+        return str(date(1899, 12, 30) + timedelta(days=int(v)))
+    s = str(v).strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    return None
+
+
+def n(x):
+    return int(x) if isinstance(x, float) and x.is_integer() else x
+
+
+names = {"campaign": {}, "adset": {}, "ad": {}}
+fb_rows = []
+for r in all_rows:   # da sap xep theo ngay, ten moi nhat se ghi de ten cu
+    names["campaign"][r[1]] = r[2]
+    names["adset"][r[3]] = r[4]
+    names["ad"][r[5]] = r[6]
+    fb_rows.append([r[0], r[1], r[3], r[5]] + [n(r[i]) for i in range(7, 16)])
+
+rev_cols, rev_rows = [], []
+try:
+    rv = sh.worksheet("Doanh_thu").get_all_values(value_render_option="UNFORMATTED_VALUE")
+except gspread.WorksheetNotFound:
+    rv = []
+    print("Canh bao: khong thay tab Doanh_thu dau ca???")
+if rv:
+    rev_cols = [str(c).strip() for c in rv[0]]
+    for r in rv[1:]:
+        if not r or str(r[0]).strip() == "":
+            continue
+        d = to_iso_date(r[0])
+        if not d:
+            print("Bo qua dong doanh thu co ngay khong doc duoc:", r[0])
+            continue
+        row = [d] + [n(c) if isinstance(c, float) else c for c in r[1:len(rev_cols)]]
+        row += [""] * (len(rev_cols) - len(row))
+        rev_rows.append(row)
+
+out = {
+    "generated_at": datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M"),
+    "fb": {
+        "cols": ["date", "campaign_id", "adset_id", "ad_id", "spend", "reach", "impressions",
+                 "link_clicks", "thruplay", "messages", "comments", "purchases", "revenue"],
+        "rows": fb_rows,
+    },
+    "names": names,
+    "revenue": {"cols": rev_cols, "rows": rev_rows},
+}
+with open("data.json", "w", encoding="utf-8") as f:
+    json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
+print(f"Da xuat data.json: {len(fb_rows)} dong quang cao, {len(rev_rows)} dong doanh thu")
