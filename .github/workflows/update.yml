@@ -2,7 +2,7 @@ name: Cap nhat du lieu FB Ads
 
 on:
   schedule:
-    - cron: "0 7 * * *"   # 14:00 gio Viet Nam moi ngay
+    - cron: "17 7 * * *"   # 14:00 gio Viet Nam moi ngay
   workflow_dispatch:       # cho phep bam chay thu bang tay
 
 jobs:
