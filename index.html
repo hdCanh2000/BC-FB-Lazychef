@@ -39,6 +39,18 @@ th{font-size:12px;color:var(--mu);font-weight:600}
 .col .card{margin-bottom:10px}
 .coltitle{font-size:13px;font-weight:600;margin-bottom:8px;min-height:36px}
 @media(max-width:900px){.cols3{grid-template-columns:1fr}.coltitle{min-height:0}}
+.dd{position:relative}
+.dd summary{list-style:none;cursor:pointer;padding:6px 10px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx);max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd summary::-webkit-details-marker{display:none}
+.ddp{position:absolute;right:0;top:calc(100% + 4px);z-index:20;min-width:320px;max-width:92vw;max-height:320px;overflow:auto;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:8px;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+.opt{display:flex;gap:8px;align-items:flex-start;padding:4px 2px;cursor:pointer;font-size:13px}
+.opt input{margin-top:3px}
+.accs{margin-bottom:8px;font-size:13px}
+.achip{display:inline-block;padding:3px 10px;border-radius:12px;margin:2px 6px 2px 0;font-size:12px;border:1px solid var(--bd);background:var(--card)}
+.achip.off{opacity:.4;text-decoration:line-through}
+.pies{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin:4px 0 6px}
+.pbox{border:1px solid var(--bd);border-radius:8px;padding:8px}
+.pbox .pc{position:relative;height:260px}
 .bestgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:8px}
 .bestgrid .card{margin:0}
 .bn{font-weight:600;word-break:break-word}
@@ -51,6 +63,7 @@ th{font-size:12px;color:var(--mu);font-weight:600}
   <div><h1>Báo cáo Facebook Ads</h1><div class="mu" id="upd">Đang tải…</div></div>
   <div class="bar">
     <select id="theme" title="Giao diện"><option value="auto">Giao diện: Tự động</option><option value="light">Giao diện: Sáng</option><option value="dark">Giao diện: Tối</option></select>
+    <details id="accdd" class="dd" hidden><summary id="accsum">Tài khoản quảng cáo</summary><div class="ddp" id="accpanel"></div></details>
     <select id="preset">
       <option value="yd">Hôm qua</option><option value="7">7 ngày qua</option><option value="14">14 ngày qua</option>
       <option value="mtd" selected>Tháng này</option><option value="lm">Tháng trước</option>
@@ -60,6 +73,7 @@ th{font-size:12px;color:var(--mu);font-weight:600}
     <span id="cu" hidden><input type="date" id="from"> – <input type="date" id="to"></span>
   </div>
 </div>
+<div class="accs" id="accs"></div>
 <div id="err"></div>
 <div id="notes"></div>
 <div class="mu" id="rng" style="margin-bottom:8px"></div>
@@ -106,6 +120,14 @@ const CFG={
   CANCEL_RATE:{green:5,red:10},       // Tỷ lệ hoàn hủy (%): <=5 xanh, 5-10 vàng, >10 đỏ
   CHANGE:{warn:5,alert:20},           // % thay đổi so với kỳ trước: xấu đi >=5 vàng, >=20 đỏ
   BEST:{minSpendShare:0.01,minMsg:3,minClicks:30,minPurchases:1},
+  HIDE_DIM_COLUMNS:['ngay'],          // cột trong tab Doanh_thu (tên không dấu, chữ thường) KHÔNG hiển thị thành bảng
+  CATEGORIES:[                        // danh mục sản phẩm: khớp theo tên sản phẩm (không dấu, chữ thường), khớp từ trên xuống
+    {name:'Máy xay nấu',kw:['xay nau']},
+    {name:'Máy ép chậm',kw:['ep cham','may ep']},
+    {name:'Máy xay cầm tay',kw:['xay cam tay']},
+    {name:'Nồi chiên hơi nước',kw:['noi chien','chien hoi nuoc','lo hap']}
+  ],
+  CATEGORY_OTHER:'Sản phẩm khác',
   IDLE:{minSpendShare:0.05}           // quảng cáo chiếm >=5% chi tiêu mà không có tin nhắn/đơn -> cần lưu ý
 };
 /* ====================================================== */
@@ -140,9 +162,33 @@ function applyTheme(t){
 }
 let savedTheme='auto';try{savedTheme=localStorage.getItem('theme')||'auto'}catch(e){}
 THEME_SEL.value=(savedTheme==='light'||savedTheme==='dark')?savedTheme:'auto';
-THEME_SEL.addEventListener('change',()=>{applyTheme(THEME_SEL.value);if(FB.length)render()});
-if(window.matchMedia)window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{if(FB.length)render()});
-let FB=[],REV=[],COL={},DIMS=[],RC=[],NAMES={},BR=new Set(),MAXFB='',MAXREV='',chart,GEN='';
+THEME_SEL.addEventListener('change',()=>{applyTheme(THEME_SEL.value);if(FBALL.length)render()});
+if(window.matchMedia)window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{if(FBALL.length)render()});
+let FBALL=[],FB=[],REV=[],COL={},DIMS=[],RC=[],NAMES={},BR=new Set(),MAXFB='',MAXREV='',chart,GEN='';
+
+/* ===== Lọc theo tài khoản quảng cáo (TKQC) ===== */
+let ACC=[],SELACC=new Set(),CUR={};
+const accName=id=>(NAMES.account||{})[id]||id;
+const accLabel=id=>`${accName(id)} - ${id}`;
+function applyAcc(){FB=(ACC.length&&SELACC.size!==ACC.length)?FBALL.filter(r=>SELACC.has(String(r[13]))):FBALL}
+function syncAcc(){
+  const n=ACC.length,k=SELACC.size;
+  $('#accsum').textContent=k===n?`Tất cả tài khoản (${n})`:(k===0?'Chưa chọn tài khoản':(k===1?accLabel([...SELACC][0]):`${k}/${n} tài khoản`));
+  $('#accpanel').innerHTML=`<label class="opt"><input type="checkbox" data-all="1"${k===n?' checked':''}><b>Tất cả tài khoản (${n})</b></label>`+
+    ACC.map(id=>`<label class="opt"><input type="checkbox" data-id="${esc(id)}"${SELACC.has(id)?' checked':''}><span>${esc(accLabel(id))}</span></label>`).join('');
+  $('#accs').innerHTML=`<span class="mu">Tài khoản quảng cáo đang lấy dữ liệu (${n}):</span> `+ACC.map(id=>`<span class="achip${SELACC.has(id)?'':' off'}">${esc(accLabel(id))}</span>`).join('');
+}
+function buildAcc(){
+  if(!ACC.length){$('#accdd').hidden=true;$('#accs').innerHTML='<span class="mu">Chưa có thông tin tài khoản quảng cáo trong dữ liệu. Hãy cập nhật file fetch_data.py rồi chạy lại workflow.</span>';return}
+  $('#accdd').hidden=false;syncAcc();
+}
+$('#accpanel').addEventListener('change',e=>{
+  const t=e.target;if(!t||!t.dataset)return;
+  if(t.dataset.all)SELACC=t.checked?new Set(ACC):new Set();
+  else if(t.dataset.id){if(t.checked)SELACC.add(t.dataset.id);else SELACC.delete(t.dataset.id)}
+  applyAcc();syncAcc();render();
+});
+document.addEventListener('click',e=>{const d=$('#accdd');if(d&&d.open&&!d.contains(e.target))d.open=false});
 
 fetch('data.json?v='+Date.now()).then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(init)
  .catch(e=>{$('#err').textContent='Không tải được data.json ('+e.message+'). Hãy chạy workflow cập nhật dữ liệu.';console.error(e)});
@@ -156,11 +202,13 @@ function detectCols(){
     else if(!can&&/doanh thu|doanh so|revenue|gmv/.test(n)&&COL.rev<0){COL.rev=i;used.add(i)}
     else if(!can&&!money&&/^(so |tong )?don( hang)?$|so don|tong don|\borders?\b/.test(n)&&COL.ord<0){COL.ord=i;used.add(i)}});
   if(COL.rev<0){const i=RC.findIndex((h,j)=>j>0&&!used.has(j));if(i>0){COL.rev=i;used.add(i)}}
-  DIMS=RC.map((h,i)=>i).filter(i=>!used.has(i));
+  DIMS=RC.map((h,i)=>i).filter(i=>!used.has(i)&&!CFG.HIDE_DIM_COLUMNS.includes(norm(RC[i])));
 }
 function init(d){
-  FB=d.fb.rows;NAMES=d.names||{campaign:{},adset:{},ad:{}};RC=d.revenue.cols||[];GEN=d.generated_at;
-  MAXFB=FB.length?FB[FB.length-1][0]:YEST;
+  FBALL=d.fb.rows;FB=FBALL;NAMES=d.names||{campaign:{},adset:{},ad:{}};NAMES.account=NAMES.account||{};CUR=d.currencies||{};RC=d.revenue.cols||[];GEN=d.generated_at;
+  ACC=[...new Set(FBALL.map(r=>r[13]).filter(x=>x!==undefined&&x!==null&&x!==''))].map(String).sort((x,y)=>accName(x).localeCompare(accName(y),'vi'));
+  SELACC=new Set(ACC);buildAcc();
+  MAXFB=FBALL.length?FBALL[FBALL.length-1][0]:YEST;
   for(const id in NAMES.campaign)if(norm(NAMES.campaign[id]).includes(CFG.BRANDING_KEYWORD))BR.add(String(id));
   detectCols();
   REV=d.revenue.rows.map(r=>({date:r[0],rev:COL.rev>=0?num(r[COL.rev]):0,ord:COL.ord>=0?num(r[COL.ord]):0,
@@ -245,6 +293,9 @@ function render(){
   $('#rng').textContent=`Kỳ xem: ${a} → ${b} (${n} ngày) · so với kỳ liền trước cùng độ dài: ${pa} → ${pb}`;
   const cur=agg(a,b),prv=agg(pa,pb),out=[];
   const nt=[];
+  if(ACC.length&&SELACC.size!==ACC.length)nt.push(`Đang lọc ${SELACC.size}/${ACC.length} tài khoản quảng cáo. Các chỉ số lấy từ Facebook (chi tiêu, hiển thị, click, tin nhắn...) chỉ tính các tài khoản đã chọn. Doanh thu thực, số đơn và hoàn hủy lấy từ tab Doanh_thu không tách theo tài khoản nên luôn là toàn kênh, vì vậy ROAS thực và tỷ lệ chi tiêu/doanh thu chỉ mang tính tham khảo.`);
+  const curs=[...new Set([...SELACC].map(id=>CUR[id]).filter(Boolean))];
+  if(curs.length>1)nt.push(`Các tài khoản đang chọn dùng nhiều đơn vị tiền tệ (${curs.join(', ')}); số tiền đang được cộng thẳng nên không chính xác.`);
   if(MAXFB<YEST)nt.push(`Dữ liệu quảng cáo mới đến ngày ${MAXFB}, chưa có các ngày sau đó.`);
   if(!MAXREV)nt.push('Tab Doanh_thu chưa có dòng dữ liệu nào đọc được, nên các chỉ số doanh thu thực đang bằng 0.');
   else if(MAXREV<MAXFB)nt.push(`Doanh thu thực mới nhập đến ngày ${MAXREV}, trong khi dữ liệu quảng cáo đến ${MAXFB}. ROAS và tỷ lệ chi tiêu/doanh thu của các ngày gần nhất có thể chưa chính xác.`);
@@ -304,27 +355,86 @@ function levelTable(a,b){
     rows.map(([k,o])=>[esc((NAMES[lv]||{})[k]||k),`<span class="mu">${esc(k)}</span>`,f(o.spend),f(o.impr),f(o.reach),f(o.clicks),
       F(o.impr?o.clicks/o.impr*100:null,2,'%'),F(o.clicks?o.spend/o.clicks:null),f(o.thru),f(o.msg),F(o.msg?o.spend/o.msg:null),f(o.cmt),f(o.pur),F(o.spend?o.frev/o.spend:null,2)]));
 }
+let PIES=[],PIEQ=[];
+const PIE_COLORS=['#1877f2','#16a34a','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'],PIE_OTHER='#94a3b8';
+const shortTxt=s=>s.length>34?s.slice(0,33)+'…':s;
+function aggBy(keyOf,a,b,pa,pb){
+  const cur={},prv={};let t=0;
+  for(const r of REV){const k=keyOf(r);
+    if(r.date>=a&&r.date<=b){const o=cur[k]||(cur[k]={rev:0,ord:0,canOrd:0,canRev:0});o.rev+=r.rev;o.ord+=r.ord;o.canOrd+=r.canOrd;o.canRev+=r.canRev;t+=r.rev}
+    else if(r.date>=pa&&r.date<=pb){prv[k]=(prv[k]||0)+r.rev}}
+  return {cur,prv,t};
+}
+function pieHtml(pre,rows){
+  const one=(sfx,title,key)=>{
+    const pos=rows.map(([k,o])=>[String(k),Number(o[key])||0]).filter(x=>x[1]>0).sort((x,y)=>y[1]-x[1]);
+    if(!pos.length)return `<div class="pbox"><div class="k">${title}</div><div class="mu" style="padding:60px 0;text-align:center">Không có dữ liệu trong kỳ</div></div>`;
+    const items=pos.slice(0,8),rest=pos.slice(8);
+    if(rest.length)items.push([`Khác (${rest.length})`,rest.reduce((s,x)=>s+x[1],0)]);
+    PIEQ.push({id:pre+'-'+sfx,labels:items.map(x=>x[0]),values:items.map(x=>x[1]),other:rest.length>0});
+    return `<div class="pbox"><div class="k">${title}</div><div class="pc"><canvas id="${pre}-${sfx}"></canvas></div></div>`};
+  let h=one('rev','Tỷ trọng doanh thu','rev');
+  if(COL.canRev>=0)h+=one('can','Tỷ trọng DT hoàn hủy','canRev');
+  return `<div class="pies">${h}</div><div class="mu" style="margin-bottom:10px">Biểu đồ chỉ tính các dòng có giá trị dương, hiển thị tối đa 8 dòng lớn nhất, phần còn lại gộp vào "Khác".</div>`;
+}
+function drawPies(){
+  if(typeof Chart==='undefined'){PIEQ=[];return}
+  const bg=getComputedStyle(document.documentElement).getPropertyValue('--card').trim();
+  PIEQ.forEach(p=>{
+    const el=$('#'+p.id);if(!el)return;
+    const tot=p.values.reduce((s,v)=>s+v,0);
+    PIES.push(new Chart(el,{type:'pie',
+      data:{labels:p.labels.map(shortTxt),datasets:[{data:p.values,borderColor:bg,borderWidth:1,
+        backgroundColor:p.labels.map((_,i)=>(p.other&&i===p.labels.length-1)?PIE_OTHER:PIE_COLORS[i%PIE_COLORS.length])}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{
+        legend:{position:window.innerWidth<600?'bottom':'right',labels:{boxWidth:10,font:{size:11}}},
+        tooltip:{callbacks:{title:c=>p.labels[c[0].dataIndex],label:c=>`${f(c.parsed)} (${f(c.parsed/tot*100,1)}%)`}}}}}));
+  });
+  PIEQ=[];
+}
+const catOf=nm=>{const n=norm(nm);for(const c of CFG.CATEGORIES){if(c.kw.some(k=>n.includes(k)))return c.name}return CFG.CATEGORY_OTHER};
+function catCard(pj,a,b,pa,pb){
+  if(pj<0)return `<div class="card st-warn"><h2>Doanh thu thực tế theo Danh mục</h2><div class="mu">Chưa tìm thấy cột sản phẩm trong tab Doanh_thu (tên cột cần chứa chữ "sản phẩm") nên chưa phân loại được danh mục.</div></div>`;
+  const order=[...CFG.CATEGORIES.map(c=>c.name),CFG.CATEGORY_OTHER],cur={},prv={},prods={};
+  order.forEach(n=>{cur[n]={rev:0,ord:0,canOrd:0,canRev:0};prv[n]=0;prods[n]=new Set()});
+  for(const r of REV){const nm=String(r.dim[pj]??'').trim()||'(trống)',c=catOf(nm);
+    if(r.date>=a&&r.date<=b){const o=cur[c];o.rev+=r.rev;o.ord+=r.ord;o.canOrd+=r.canOrd;o.canRev+=r.canRev;prods[c].add(nm)}
+    else if(r.date>=pa&&r.date<=pb){prv[c]+=r.rev}}
+  const rows=order.map(n=>[n,cur[n]]);
+  const hd=['Danh mục','Doanh thu thực','So với kỳ trước'];
+  if(COL.ord>=0)hd.push('Số đơn mua');
+  if(COL.canOrd>=0){hd.push('Số đơn hủy');if(COL.ord>=0)hd.push('Tỷ lệ hoàn hủy')}
+  if(COL.canRev>=0)hd.push('DT hoàn hủy');
+  const list=order.map(n=>`<div style="margin-top:4px"><b>${esc(n)}</b>: ${prods[n].size?[...prods[n]].map(esc).join('; '):'—'}</div>`).join('');
+  return `<div class="card"><h2>Doanh thu thực tế theo Danh mục</h2>${pieHtml('pie-cat',rows)}<div class="sc">${tbl(hd,rows.map(([n,o])=>{
+    const r=[esc(n),f(o.rev),prv[n]?dHtml(pch(o.rev,prv[n]),true):(o.rev?'<span class="t-nu">mới</span>':'—')];
+    if(COL.ord>=0)r.push(f(o.ord));
+    if(COL.canOrd>=0){r.push(f(o.canOrd));if(COL.ord>=0){const rt=o.ord?o.canOrd/o.ord*100:null;r.push(rt===null?'—':pill(f(rt,1)+'%',stAbs(rt,CFG.CANCEL_RATE)))}}
+    if(COL.canRev>=0)r.push(f(o.canRev));
+    return r}))}</div><details style="margin-top:8px"><summary class="mu" style="cursor:pointer">Xem sản phẩm thuộc từng danh mục (kỳ đang xem)</summary><div class="mu">${list}</div></details></div>`;
+}
 function revDims(a,b,pa,pb){
-  if(!DIMS.length){$('#rv').innerHTML='';return}
-  let h='';
+  PIES.forEach(c=>c.destroy());PIES=[];PIEQ=[];
+  const pj=DIMS.findIndex(i=>/san pham/.test(norm(RC[i]))&&!/nhom|danh muc|loai/.test(norm(RC[i])));
+  let h='',done=false;
   DIMS.forEach((ci,j)=>{
-    const cur={},prv={};let t=0;
-    for(const r of REV){const k=String(r.dim[j]??'').trim()||'(trống)';
-      if(r.date>=a&&r.date<=b){const o=cur[k]||(cur[k]={rev:0,ord:0,canOrd:0,canRev:0});o.rev+=r.rev;o.ord+=r.ord;o.canOrd+=r.canOrd;o.canRev+=r.canRev;t+=r.rev}
-      else if(r.date>=pa&&r.date<=pb){prv[k]=(prv[k]||0)+r.rev}}
+    const {cur,prv,t}=aggBy(r=>String(r.dim[j]??'').trim()||'(trống)',a,b,pa,pb);
     const rows=Object.entries(cur).sort((x,y)=>y[1].rev-x[1].rev);
-    if(!rows.length)return;
-    const hd=[esc(RC[ci]),'Doanh thu','Tỷ trọng','So kỳ trước'];
-    if(COL.ord>=0)hd.push('Số đơn');
-    if(COL.canOrd>=0){hd.push('Đơn hoàn hủy');if(COL.ord>=0)hd.push('Tỷ lệ hoàn hủy')}
-    if(COL.canRev>=0)hd.push('DT hoàn hủy');
-    h+=`<div class="card"><h2>Doanh thu thực tế theo ${esc(RC[ci])}</h2><div class="sc">${tbl(hd,rows.map(([k,o])=>{
-      const r=[esc(k),f(o.rev),f(t?o.rev/t*100:0,1)+'%',prv[k]?dHtml(pch(o.rev,prv[k]),true):'<span class="t-nu">mới</span>'];
-      if(COL.ord>=0)r.push(f(o.ord));
-      if(COL.canOrd>=0){r.push(f(o.canOrd));if(COL.ord>=0){const rt=o.ord?o.canOrd/o.ord*100:null;r.push(rt===null?'—':pill(f(rt,1)+'%',stAbs(rt,CFG.CANCEL_RATE)))}}
-      if(COL.canRev>=0)r.push(f(o.canRev));
-      return r}))}</div></div>`});
-  $('#rv').innerHTML=h;
+    if(rows.length){
+      const hd=[esc(RC[ci]),'Doanh thu','Tỷ trọng','So kỳ trước'];
+      if(COL.ord>=0)hd.push('Số đơn');
+      if(COL.canOrd>=0){hd.push('Đơn hoàn hủy');if(COL.ord>=0)hd.push('Tỷ lệ hoàn hủy')}
+      if(COL.canRev>=0)hd.push('DT hoàn hủy');
+      h+=`<div class="card"><h2>Doanh thu thực tế theo ${esc(RC[ci])}</h2>${j===pj?pieHtml('pie-prod',rows):''}<div class="sc">${tbl(hd,rows.map(([k,o])=>{
+        const r=[esc(k),f(o.rev),f(t?o.rev/t*100:0,1)+'%',prv[k]?dHtml(pch(o.rev,prv[k]),true):'<span class="t-nu">mới</span>'];
+        if(COL.ord>=0)r.push(f(o.ord));
+        if(COL.canOrd>=0){r.push(f(o.canOrd));if(COL.ord>=0){const rt=o.ord?o.canOrd/o.ord*100:null;r.push(rt===null?'—':pill(f(rt,1)+'%',stAbs(rt,CFG.CANCEL_RATE)))}}
+        if(COL.canRev>=0)r.push(f(o.canRev));
+        return r}))}</div></div>`}
+    if(j===pj){h+=catCard(pj,a,b,pa,pb);done=true}
+  });
+  if(!done)h+=catCard(-1,a,b,pa,pb);
+  $('#rv').innerHTML=h;drawPies();
 }
 function compare(){
   const u=$('#unit').value,m={};
