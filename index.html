@@ -51,6 +51,13 @@ th{font-size:12px;color:var(--mu);font-weight:600}
 .pies{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin:4px 0 6px}
 .pbox{border:1px solid var(--bd);border-radius:8px;padding:8px}
 .pbox .pc{position:relative;height:260px}
+.opts{display:flex;flex-wrap:wrap;gap:16px;margin:2px 0 10px;font-size:13px}
+.opts label{display:flex;gap:6px;align-items:center;cursor:pointer}
+.tot td{font-weight:700;border-top:2px solid var(--tx)}
+.pb{position:relative;height:6px;background:var(--bd);border-radius:3px;margin:8px 0}
+.pb i{display:block;height:100%;border-radius:3px}
+.pb u{position:absolute;top:-3px;width:2px;height:12px;background:var(--tx)}
+.b-ok{background:var(--ok)}.b-warn{background:var(--warn)}.b-bad{background:var(--bad)}
 .bestgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:8px}
 .bestgrid .card{margin:0}
 .bn{font-weight:600;word-break:break-word}
@@ -120,7 +127,7 @@ const CFG={
   CANCEL_RATE:{green:5,red:10},       // Tỷ lệ hoàn hủy (%): <=5 xanh, 5-10 vàng, >10 đỏ
   CHANGE:{warn:5,alert:20},           // % thay đổi so với kỳ trước: xấu đi >=5 vàng, >=20 đỏ
   BEST:{minSpendShare:0.01,minMsg:3,minClicks:30,minPurchases:1},
-  HIDE_DIM_COLUMNS:['ngay'],          // cột trong tab Doanh_thu (tên không dấu, chữ thường) KHÔNG hiển thị thành bảng
+  HIDE_DIM_COLUMNS:['ngay','kenh ban'],          // cột trong tab Doanh_thu (tên không dấu, chữ thường) KHÔNG hiển thị thành bảng
   CATEGORIES:[                        // danh mục sản phẩm: khớp theo tên sản phẩm (không dấu, chữ thường), khớp từ trên xuống
     {name:'Máy xay nấu',kw:['xay nau']},
     {name:'Máy ép chậm',kw:['ep cham','may ep']},
@@ -128,6 +135,21 @@ const CFG={
     {name:'Nồi chiên hơi nước',kw:['noi chien','chien hoi nuoc','lo hap']}
   ],
   CATEGORY_OTHER:'Sản phẩm khác',
+  VAT:0.10,                           // VAT cộng vào chi phí QC (ô "Cộng VAT" và các chỉ số "gồm VAT")
+  OTHER_COST_PCT:0,                   // % hàng tặng & chi phí khác trên doanh thu (thẻ "Tổng CP / DT")
+  KPI:{warn:0.85,costWarn:1.15},      // tiến độ >= mốc: xanh; >= 85% mốc: vàng; thấp hơn: đỏ. Chi phí <= KPI xanh; <= 115% KPI vàng; cao hơn đỏ
+  PRODUCT_OTHER_KW:['phu kien'],      // tên sản phẩm chứa các từ này (không dấu) -> nhóm "Khác"
+  PRODUCTS:[                          // mã chiến dịch (code) = chữ có trong tên chiến dịch Meta; kw = chữ có trong tên sản phẩm ở tab Doanh_thu (không dấu, chữ thường)
+    {code:'NCHN-16L',label:'Nồi chiên hơi nước',cat:'Nồi chiên hơi nước',kw:['lc 01ch','noi chien','16l']},
+    {code:'MSH-8in1',label:'Máy xay nấu 8in1',cat:'Máy xay nấu',kw:['8in1']},
+    {code:'MSH-12in1',label:'Máy xay nấu 12in1',cat:'Máy xay nấu',kw:['lc 04sh','12in1']},
+    {code:'MSH-5in1',label:'Máy xay nấu 5in1',cat:'Máy xay nấu',kw:['lc 01sh','5in1']},
+    {code:'MEC-200w',label:'Máy ép chậm 200W',cat:'Máy ép chậm',kw:['lc 04me','200w']},
+    {code:'MEC-130w',label:'Máy ép chậm mini 130W',cat:'Máy ép chậm',kw:['lc 05me','130w']},
+    {code:'MEC-100w',label:'Máy ép chậm 3S 100W',cat:'Máy ép chậm',kw:['lc 02me','100w']},
+    {code:'MEC-250w',label:'Máy ép chậm Bigsize',cat:'Máy ép chậm',kw:['250w','bigsize']},
+    {code:'MXCT-3in1',label:'Máy xay cầm tay 3in1',cat:'Máy xay cầm tay',kw:['lc 03st','xay cam tay']}
+  ],
   IDLE:{minSpendShare:0.05}           // quảng cáo chiếm >=5% chi tiêu mà không có tin nhắn/đơn -> cần lưu ý
 };
 /* ====================================================== */
@@ -166,6 +188,8 @@ THEME_SEL.addEventListener('change',()=>{applyTheme(THEME_SEL.value);if(FBALL.le
 if(window.matchMedia)window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{if(FBALL.length)render()});
 let FBALL=[],FB=[],REV=[],COL={},DIMS=[],RC=[],NAMES={},BR=new Set(),MAXFB='',MAXREV='',chart,GEN='';
 
+let KPI=[],KPISP=[],CAMPFAM={};const COSTOPT={alloc:true,vat:false};
+
 /* ===== Lọc theo tài khoản quảng cáo (TKQC) ===== */
 let ACC=[],SELACC=new Set(),CUR={};
 const accName=id=>(NAMES.account||{})[id]||id;
@@ -188,6 +212,7 @@ $('#accpanel').addEventListener('change',e=>{
   else if(t.dataset.id){if(t.checked)SELACC.add(t.dataset.id);else SELACC.delete(t.dataset.id)}
   applyAcc();syncAcc();render();
 });
+$('#rv').addEventListener('change',e=>{const t=e.target;if(t&&t.dataset&&t.dataset.opt){COSTOPT[t.dataset.opt]=!!t.checked;render()}});
 document.addEventListener('click',e=>{const d=$('#accdd');if(d&&d.open&&!d.contains(e.target))d.open=false});
 
 fetch('data.json?v='+Date.now()).then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(init)
@@ -211,6 +236,8 @@ function init(d){
   MAXFB=FBALL.length?FBALL[FBALL.length-1][0]:YEST;
   for(const id in NAMES.campaign)if(norm(NAMES.campaign[id]).includes(CFG.BRANDING_KEYWORD))BR.add(String(id));
   detectCols();
+  CAMPFAM={};for(const id in NAMES.campaign){const n=norm(NAMES.campaign[id]),p=CFG.PRODUCTS.find(p=>n.includes(norm(p.code)));CAMPFAM[String(id)]=p?p.code:null}
+  KPI=parseKpi(d.kpi);KPISP=parseKpiSp(d.kpi_sp);
   REV=d.revenue.rows.map(r=>({date:r[0],rev:COL.rev>=0?num(r[COL.rev]):0,ord:COL.ord>=0?num(r[COL.ord]):0,
     canOrd:COL.canOrd>=0?num(r[COL.canOrd]):0,canRev:COL.canRev>=0?num(r[COL.canRev]):0,dim:DIMS.map(i=>r[i])}));
   MAXREV=REV.reduce((m,r)=>r.date>m?r.date:m,'');
@@ -355,6 +382,138 @@ function levelTable(a,b){
     rows.map(([k,o])=>[esc((NAMES[lv]||{})[k]||k),`<span class="mu">${esc(k)}</span>`,f(o.spend),f(o.impr),f(o.reach),f(o.clicks),
       F(o.impr?o.clicks/o.impr*100:null,2,'%'),F(o.clicks?o.spend/o.clicks:null),f(o.thru),f(o.msg),F(o.msg?o.spend/o.msg:null),f(o.cmt),f(o.pur),F(o.spend?o.frev/o.spend:null,2)]));
 }
+/* ===== Chi phí / doanh thu theo sản phẩm & danh mục ===== */
+const famOfName=nm=>{const n=norm(nm);if(CFG.PRODUCT_OTHER_KW.some(k=>n.includes(k)))return'OTHER';
+  const p=CFG.PRODUCTS.find(p=>p.kw.some(k=>n.includes(k)));return p?p.code:'OTHER'};
+const FKEYS=['own','alloc','total','net','refund','gross','mess','pur'];
+function famAgg(a,b,pj,vat){
+  const mk=()=>({own:0,alloc:0,total:0,net:0,refund:0,gross:0,mess:0,pur:0}),R={};
+  CFG.PRODUCTS.forEach(p=>R[p.code]=mk());R.OTHER=mk();
+  const vk=(vat===undefined?COSTOPT.vat:vat)?1+CFG.VAT:1;
+  let pool=0,pm=0,pp=0;const pc={};
+  for(const r of FB){if(r[0]<a||r[0]>b)continue;
+    const id=String(r[1]),fam=CAMPFAM[id],br=BR.has(id);
+    if(fam){R[fam].mess+=r[9];R[fam].pur+=r[11];if(!br)R[fam].own+=r[4]*vk}
+    else{pm+=r[9];pp+=r[11];if(!br){pool+=r[4]*vk;pc[id]=(pc[id]||0)+r[4]*vk}}}
+  if(pj>=0)for(const r of REV){if(r.date<a||r.date>b)continue;
+    const o=R[famOfName(String(r.dim[pj]??''))];o.net+=r.rev;o.refund+=r.canRev}
+  let left=pool;
+  if(COSTOPT.alloc){const ks=Object.keys(R),pos=ks.reduce((s,k)=>s+Math.max(R[k].net,0),0);
+    if(pos>0&&pool>0){ks.forEach(k=>{R[k].alloc=pool*Math.max(R[k].net,0)/pos});left=0}}
+  Object.values(R).forEach(o=>{o.gross=o.net+o.refund;o.total=o.own+o.alloc});
+  return {R,left,pm,pp,pc};
+}
+const dash='<span class="t-nu">–</span>';
+const nz=x=>x?f(x):dash;
+const tblT=(h,r,t)=>`<table><thead><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${r.map(x=>`<tr>${x.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}<tr class="tot">${t.map(c=>`<td>${c}</td>`).join('')}</tr></tbody></table>`;
+function sumAll(os,g){const t={own:g.left,alloc:0,total:g.left,net:0,refund:0,gross:0,mess:g.pm,pur:g.pp};os.forEach(o=>{FKEYS.forEach(k=>{t[k]+=o[k]})});return t}
+function costTable(first,rows,g){
+  const hd=[first,'CP chiến dịch riêng','CP chung phân bổ','Tổng chi phí','Doanh thu bán','Hoàn','Doanh thu thuần','CP / DT','Mess','Mua (Pixel)'];
+  const cp=o=>(o.net>0&&o.total>0)?pill(f(o.total/o.net*100,1)+'%',stAbs(o.total/o.net*100,CFG.COST_RATIO)):dash;
+  const line=(l,o)=>[l,nz(o.own),nz(o.alloc),`<b>${nz(o.total)}</b>`,f(o.gross),nz(o.refund),f(o.net),cp(o),nz(o.mess),nz(o.pur)];
+  const body=rows.map(([l,o])=>line(esc(l),o));
+  if(g.left>0||g.pm||g.pp)body.push([`<span class="mu">Chiến dịch chung (chưa gắn sản phẩm)</span>`,nz(g.left),dash,`<b>${nz(g.left)}</b>`,dash,dash,dash,dash,nz(g.pm),nz(g.pp)]);
+  return tblT(hd,body,line('Tổng',sumAll(rows.map(x=>x[1]),g)));
+}
+const costOpts=()=>`<div class="opts"><label><input type="checkbox" data-opt="alloc"${COSTOPT.alloc?' checked':''}> Phân bổ chi phí chiến dịch chung theo tỷ trọng doanh thu</label><label><input type="checkbox" data-opt="vat"${COSTOPT.vat?' checked':''}> Cộng ${f(CFG.VAT*100,0)}% VAT vào chi phí</label></div>`;
+function poolInfo(g,a,b){
+  const ids=new Set();let brS=0;
+  for(const r of FB){if(r[0]<a||r[0]>b)continue;const id=String(r[1]);if(r[4]>0)ids.add(id);if(BR.has(id))brS+=r[4]}
+  let m=0;ids.forEach(id=>{if(CAMPFAM[id])m++});
+  const pc=Object.entries(g.pc).sort((x,y)=>y[1]-x[1]).slice(0,15);
+  return `<div class="mu" style="margin-top:6px">Nhận diện ${m}/${ids.size} chiến dịch có chi tiêu theo mã sản phẩm trong tên chiến dịch. Đã loại ${f(brS)} chi tiêu chiến dịch Branding.${COSTOPT.vat?' Chi phí đã gồm VAT.':''} Doanh thu thuần = cột Doanh_thu của tab Doanh_thu (đã trừ hoàn); Doanh thu bán = thuần + hoàn.</div>
+  <details style="margin-top:6px"><summary class="mu" style="cursor:pointer">Xem chiến dịch chưa gắn sản phẩm (tính vào chi phí chung)</summary><div class="mu">${pc.length?pc.map(([id,s])=>`${esc((NAMES.campaign||{})[id]||id)}: ${f(s)}`).join('<br>'):'Không có'}</div></details>`;
+}
+const noProd=T=>`<div class="card st-warn"><h2>${T}</h2><div class="mu">Chưa tìm thấy cột sản phẩm trong tab Doanh_thu (tên cột cần chứa chữ "sản phẩm") nên chưa tính được.</div></div>`;
+function costProductCard(pj,a,b){
+  const T='Chi phí / doanh thu theo sản phẩm';
+  if(pj<0)return noProd(T);
+  const g=famAgg(a,b,pj),R=g.R,act=o=>FKEYS.some(k=>o[k]);
+  const list=[...CFG.PRODUCTS.map(p=>[p.label,R[p.code]]),['Khác',R.OTHER]].filter(x=>act(x[1])).sort((x,y)=>(y[1].total-x[1].total)||(y[1].net-x[1].net));
+  return `<div class="card"><h2>${T} <span class="mu" style="font-weight:400">Chi phí từ tên chiến dịch · doanh thu từ tab Doanh_thu</span></h2>${costOpts()}<div class="sc">${costTable('Sản phẩm',list,g)}</div>${poolInfo(g,a,b)}</div>`;
+}
+function costCatCard(pj,a,b){
+  const T='Chi phí / doanh thu theo danh mục';
+  if(pj<0)return noProd(T);
+  const g=famAgg(a,b,pj),order=[...CFG.CATEGORIES.map(c=>c.name),CFG.CATEGORY_OTHER],C={};
+  order.forEach(n=>{C[n]={own:0,alloc:0,total:0,net:0,refund:0,gross:0,mess:0,pur:0}});
+  const add=(c,o)=>{FKEYS.forEach(k=>{C[c][k]+=o[k]})};
+  CFG.PRODUCTS.forEach(p=>add(order.includes(p.cat)?p.cat:CFG.CATEGORY_OTHER,g.R[p.code]));add(CFG.CATEGORY_OTHER,g.R.OTHER);
+  return `<div class="card"><h2>${T} <span class="mu" style="font-weight:400">Gộp từ bảng theo sản phẩm</span></h2>${costOpts()}<div class="sc">${costTable('Danh mục',order.map(n=>[n,C[n]]),g)}</div></div>`;
+}
+
+/* ===== Tiến độ KPI tháng - giai đoạn ===== */
+function parseKpi(t){
+  const out=[];
+  for(const r of (t&&t.rows)||[]){
+    const y=Math.round(num(r[0])),m=Math.round(num(r[1])),mt=String(r[2]||'').match(/(\d{1,2})\s*\/\s*(\d{1,2})\s*-\s*(\d{1,2})\s*\/\s*(\d{1,2})/);
+    if(!y||!m||!mt)continue;
+    const sd=+mt[1],sm=+mt[2],ed=+mt[3],em=+mt[4];
+    out.push({y,m,sd,ed,start:`${y}-${pad(sm)}-${pad(sd)}`,end:`${y}-${pad(em)}-${pad(ed)}`,dt:num(r[3]),cp:num(r[4])});
+  }
+  return out;
+}
+function parseKpiSp(t){
+  const out=[];
+  for(const r of (t&&t.rows)||[]){const y=Math.round(num(r[0])),m=Math.round(num(r[1]));if(!y||!m||!r[2])continue;out.push({y,m,key:norm(r[2]),sl:num(r[3]),dt:num(r[4])})}
+  return out;
+}
+const fM=x=>f(x/1e6,1)+'M';
+const stUp=(x,t)=>x>=t?'ok':(x>=t*CFG.KPI.warn?'warn':'bad');
+const stCost=(x,k)=>x<=k?'ok':(x<=k*CFG.KPI.costWarn?'warn':'bad');
+function kpiSection(b,pj){
+  const y=+b.slice(0,4),m=+b.slice(5,7),ms=`${y}-${pad(m)}-01`,N=new Date(Date.UTC(y,m,0)).getUTCDate();
+  const T=`Tiến độ KPI tháng ${pad(m)}/${y} & run-rate`;
+  const st=KPI.filter(k=>k.y===y&&k.m===m).sort((p,q)=>p.sd-q.sd);
+  if(!st.length)return `<div class="card st-warn"><h2>${T}</h2><div class="mu">${KPI.length?'Chưa có KPI của tháng này trong tab KPI_FB.':'Chưa có dữ liệu KPI. Cần cập nhật file fetch_data.py (đọc tab KPI_FB) rồi chạy lại workflow.'}</div></div>`;
+  let asOf=b;if(MAXREV&&MAXREV>=ms&&MAXREV<b)asOf=MAXREV;
+  const n=+asOf.slice(8,10),dayP=n/N,k1=1+CFG.VAT;
+  const dtR=(x,z)=>REV.reduce((s,r)=>(r.date>=x&&r.date<=z)?s+r.rev:s,0);
+  const spR=(x,z)=>{let s=0;for(const r of FB){if(r[0]>=x&&r[0]<=z&&!BR.has(String(r[1])))s+=r[4]}return s};
+  const kDT=st.reduce((s,k)=>s+k.dt,0),kCP=st.reduce((s,k)=>s+k.cp,0),kR=kDT?kCP/kDT:null;
+  const dt=dtR(ms,asOf),sp=spR(ms,asOf)*k1;
+  const pct=kDT?dt/kDT:null,rr=n?dt/n*N:0,need=N>n?(kDT-dt)/(N-n):null,spRR=n?sp/n*N:0;
+  const cr=dt>0?sp/dt:null,oth=CFG.OTHER_COST_PCT/100;
+  const s1=pct===null?'nu':stUp(pct,dayP),s2=kDT?stUp(rr/kDT,1):'nu',s3=(cr===null||kR===null)?'nu':stCost(cr,kR),s4=(cr===null||kR===null)?'nu':stCost(cr+oth,kR),s5=kCP?stCost(spRR/kCP,1):'nu';
+  const cards=`<div class="grid">
+    <div class="card st-${s1}"><div class="k">DT lũy kế / KPI</div><div class="v">${fM(dt)} / ${fM(kDT)}</div><div class="pb"><i class="b-${s1}" style="width:${Math.max(0,Math.min(100,(pct||0)*100))}%"></i><u style="left:${dayP*100}%"></u></div><div class="d mu">${F(pct===null?null:pct*100,0)}% KPI · vạch = tiến độ ngày ${f(dayP*100,0)}%</div></div>
+    <div class="card st-${s2}"><div class="k">Run-rate DT tháng</div><div class="v">${fM(rr)}</div><div class="d mu">${F(kDT?rr/kDT*100:null,0)}% KPI · ${need!==null&&need>0?'cần '+fM(need)+'/ngày':(need===null?'hết tháng':'đã đạt KPI')}</div></div>
+    <div class="card st-${s3}"><div class="k">CP QC / DT (gồm VAT)</div><div class="v">${F(cr===null?null:cr*100,1,'%')}</div><div class="d mu">KPI ${F(kR===null?null:kR*100,1)}% · CP QC ${fM(sp)}</div></div>
+    <div class="card st-${s4}"><div class="k">Tổng CP / DT (ước tính)</div><div class="v">${F(cr===null?null:(cr+oth)*100,1,'%')}</div><div class="d mu">KPI ${F(kR===null?null:kR*100,1)}% · + hàng tặng &amp; CP khác ${f(CFG.OTHER_COST_PCT,1)}%</div></div>
+    <div class="card st-${s5}"><div class="k">Run-rate chi QC (gồm VAT)</div><div class="v">${fM(spRR)}</div><div class="d mu">${F(kCP?spRR/kCP*100:null,0)}% ngân sách ${fM(kCP)}</div></div></div>`;
+  const stRows=st.map((k,i)=>{
+    const started=k.start<=asOf,e2=k.end<asOf?k.end:asOf,len=diff(k.start,k.end)+1,done=started?diff(k.start,e2)+1:0;
+    const dS=started?dtR(k.start,e2):null,sS=started?spR(k.start,e2)*k1:null,kr=k.dt?k.cp/k.dt:null;
+    const c=(started&&dS>0&&kr!==null)?sS/dS:null;
+    const lab=`GĐ${i+1} · ${k.sd}-${k.ed}/${pad(m)}`;
+    return [started?lab:`<span class="mu">${lab}</span>`,f(k.dt),started?f(dS):dash,(started&&k.dt)?f(dS/k.dt*100,0)+'%':dash,`${done}/${len} ngày`,f(k.cp),started?f(sS):dash,f(k.cp),kr===null?dash:f(kr*100,1)+'%',c===null?dash:pill(f(c*100,0)+'%',stCost(c,kr))];
+  });
+  const stTbl=tbl(['Giai đoạn','DT KPI','DT thực','% KPI','Tiến độ ngày','CP QC KPI (gồm VAT)','CP QC thực (gồm VAT)','CP tổng KPI','CP/DT KPI','CP QC/DT thực'],stRows);
+  let prodTbl='';
+  if(pj>=0){
+    const g=famAgg(ms,asOf,pj,false),R=g.R,kExV=kR===null?null:kR/k1;
+    const spm=KPISP.filter(x=>x.y===y&&x.m===m);
+    const kOf=p=>spm.find(x=>x.key===norm(p.code)||x.key===norm(p.label));
+    const items=[...CFG.PRODUCTS.map(p=>({label:p.label,o:R[p.code],k:kOf(p)})),{label:'Khác',o:R.OTHER,k:spm.find(x=>x.key==='khac')}];
+    const T0={sl:0,dt:0,net:0,rr:0,cp:0,cpk:0,any:false};
+    const rowOf=(label,o,k,isTot)=>{
+      const rrp=n?o.net/n*N:0,cpK=(k&&kExV!==null)?k.dt*kExV:null;
+      const cpdt=o.net>0&&o.total>0?o.total/o.net:null;
+      const dim=!FKEYS.some(x=>o[x])&&!k;
+      return [dim?`<span class="mu">${esc(label)}</span>`:esc(label),k&&k.sl?f(k.sl):dash,k?f(k.dt):dash,nz(o.net),(k&&k.dt)?f(o.net/k.dt*100,0)+'%':dash,nz(rrp),(k&&k.dt)?pill(f(rrp/k.dt*100,0)+'%',stUp(rrp/k.dt,1)):dash,cpK===null?dash:f(cpK),nz(o.total),(kExV===null||!(k||isTot))?dash:f(kExV*100,1)+'%',cpdt===null?dash:pill(f(cpdt*100,1)+'%',kExV===null?stAbs(cpdt*100,CFG.COST_RATIO):stCost(cpdt,kExV))];
+    };
+    const body=items.map(x=>rowOf(x.label,x.o,x.k));
+    if(g.left>0)body.push([`<span class="mu">Chiến dịch chung (chưa phân bổ)</span>`,dash,dash,dash,dash,dash,dash,dash,nz(g.left),dash,dash]);
+    const tot=sumAll(items.map(x=>x.o),g),kk=items.reduce((a2,x)=>{if(x.k){a2.sl+=x.k.sl;a2.dt+=x.k.dt;a2.has=true}return a2},{sl:0,dt:0,has:false});
+    const tK=kk.has?{sl:kk.sl,dt:kk.dt}:null;
+    const totRow=rowOf('Tổng',tot,tK,true);totRow[0]='Tổng';
+    prodTbl=tblT(['Sản phẩm','SL KPI','DT KPI','DT thực','% KPI tháng','Run-rate DT','Run-rate / KPI','CP KPI*','CP QC thực*','CP/DT KPI','CP/DT thực'],body,totRow)+
+      `<div class="mu" style="margin-top:6px">* Chưa gồm VAT. CP QC thực lấy từ chiến dịch theo mã sản phẩm${COSTOPT.alloc?' + phần chi phí chung phân bổ theo tỷ trọng doanh thu':''} (đổi ở ô tích trong bảng chi phí phía trên).${spm.length?'':' Chưa có KPI theo sản phẩm: tạo tab KPI_SP (cột Nam_KPI, Thang_KPI, San_pham, SL_KPI, Doanh_thu_KPI) để hiện các cột KPI.'}</div>`;
+  }
+  const asNote=asOf<b?` (doanh thu mới có đến ${asOf.slice(8,10)}/${asOf.slice(5,7)})`:'';
+  return `<div class="card"><h2>${T} <span class="mu" style="font-weight:400">DT đến ${asOf.slice(8,10)}/${asOf.slice(5,7)} · ${n}/${N} ngày${asNote}</span></h2>${cards}<div class="sc">${stTbl}</div>${prodTbl?`<div class="sc" style="margin-top:14px">${prodTbl}</div>`:''}<div class="mu" style="margin-top:6px">Tháng KPI lấy theo ngày kết thúc của bộ lọc thời gian. "Gồm VAT" = chi tiêu Facebook không gồm chiến dịch Branding × ${f(k1,2)}. Run-rate = số lũy kế ÷ số ngày đã qua × số ngày trong tháng.</div></div>`;
+}
+
 let PIES=[],PIEQ=[];
 const PIE_COLORS=['#1877f2','#16a34a','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'],PIE_OTHER='#94a3b8';
 const shortTxt=s=>s.length>34?s.slice(0,33)+'…':s;
@@ -431,9 +590,10 @@ function revDims(a,b,pa,pb){
         if(COL.canOrd>=0){r.push(f(o.canOrd));if(COL.ord>=0){const rt=o.ord?o.canOrd/o.ord*100:null;r.push(rt===null?'—':pill(f(rt,1)+'%',stAbs(rt,CFG.CANCEL_RATE)))}}
         if(COL.canRev>=0)r.push(f(o.canRev));
         return r}))}</div></div>`}
-    if(j===pj){h+=catCard(pj,a,b,pa,pb);done=true}
+    if(j===pj){h+=costProductCard(pj,a,b)+catCard(pj,a,b,pa,pb)+costCatCard(pj,a,b);done=true}
   });
-  if(!done)h+=catCard(-1,a,b,pa,pb);
+  if(!done)h+=costProductCard(-1,a,b)+catCard(-1,a,b,pa,pb)+costCatCard(-1,a,b);
+  h+=kpiSection(b,pj);
   $('#rv').innerHTML=h;drawPies();
 }
 function compare(){
