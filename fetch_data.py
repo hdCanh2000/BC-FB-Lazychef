@@ -224,6 +224,26 @@ if rv:
         row += [""] * (len(rev_cols) - len(row))
         rev_rows.append(row)
 
+def read_tab(name, optional=False):
+    """Doc 1 tab (dong dau la tieu de) -> {"cols": [...], "rows": [...]}"""
+    try:
+        vals = sh.worksheet(name).get_all_values(value_render_option="UNFORMATTED_VALUE")
+    except gspread.WorksheetNotFound:
+        print(f"{'Thong bao' if optional else 'Canh bao'}: khong thay tab {name}")
+        return {"cols": [], "rows": []}
+    if not vals:
+        return {"cols": [], "rows": []}
+    cols = [str(c).strip() for c in vals[0]]
+    rows = []
+    for r in vals[1:]:
+        if r and any(str(c).strip() != "" for c in r):
+            rows.append([n(c) if isinstance(c, float) else c for c in r[:len(cols)]])
+    return {"cols": cols, "rows": rows}
+
+
+kpi = read_tab("KPI_FB")
+kpi_sp = read_tab("KPI_SP", optional=True)   # tuy chon: KPI theo san pham
+
 out = {
     "generated_at": datetime.now(timezone(timedelta(hours=7))).strftime("%Y-%m-%d %H:%M"),
     "fb": {
@@ -235,7 +255,9 @@ out = {
     "names": names,
     "currencies": {k: v["currency"] for k, v in acc_meta.items()},
     "revenue": {"cols": rev_cols, "rows": rev_rows},
+    "kpi": kpi,
+    "kpi_sp": kpi_sp,
 }
 with open("data.json", "w", encoding="utf-8") as f:
     json.dump(out, f, ensure_ascii=False, separators=(",", ":"))
-print(f"Da xuat data.json: {len(fb_rows)} dong quang cao ({len(names['account'])} tai khoan), {len(rev_rows)} dong doanh thu")
+print(f"Da xuat data.json: {len(fb_rows)} dong quang cao ({len(names['account'])} tai khoan), {len(rev_rows)} dong doanh thu, {len(kpi['rows'])} dong KPI")
