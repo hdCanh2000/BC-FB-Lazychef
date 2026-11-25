@@ -135,6 +135,7 @@ const CFG={
     {name:'Nồi chiên hơi nước',kw:['noi chien','chien hoi nuoc','lo hap']}
   ],
   CATEGORY_OTHER:'Sản phẩm khác',
+  KPI_PRODUCT_CP_INCLUDES_VAT:true,   // CP KPI từng sản phẩm nhập trong tab KPI_FB đã gồm VAT (bảng sẽ chia cho 1,1 để so với "CP QC thực*" chưa VAT)
   VAT:0.10,                           // VAT cộng vào chi phí QC (ô "Cộng VAT" và các chỉ số "gồm VAT")
   OTHER_COST_PCT:0,                   // % hàng tặng & chi phí khác trên doanh thu (thẻ "Tổng CP / DT")
   KPI:{warn:0.85,costWarn:1.15},      // tiến độ >= mốc: xanh; >= 85% mốc: vàng; thấp hơn: đỏ. Chi phí <= KPI xanh; <= 115% KPI vàng; cao hơn đỏ
@@ -148,7 +149,8 @@ const CFG={
     {code:'MEC-130w',label:'Máy ép chậm mini 130W',cat:'Máy ép chậm',kw:['lc 05me','130w']},
     {code:'MEC-100w',label:'Máy ép chậm 3S 100W',cat:'Máy ép chậm',kw:['lc 02me','100w']},
     {code:'MEC-250w',label:'Máy ép chậm Bigsize',cat:'Máy ép chậm',kw:['250w','bigsize']},
-    {code:'MXCT-3in1',label:'Máy xay cầm tay 3in1',cat:'Máy xay cầm tay',kw:['lc 03st','xay cam tay']}
+    {code:'MXCT-3in1',label:'Máy xay cầm tay 3in1',cat:'Máy xay cầm tay',kw:['lc 03st','xay cam tay']},
+    {code:'NieuGom-2500ML',label:'Niêu gốm 2500ML',cat:'Sản phẩm khác',kw:['nieu gom']}
   ],
   IDLE:{minSpendShare:0.05}           // quảng cáo chiếm >=5% chi tiêu mà không có tin nhắn/đơn -> cần lưu ý
 };
@@ -188,7 +190,7 @@ THEME_SEL.addEventListener('change',()=>{applyTheme(THEME_SEL.value);if(FBALL.le
 if(window.matchMedia)window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change',()=>{if(FBALL.length)render()});
 let FBALL=[],FB=[],REV=[],COL={},DIMS=[],RC=[],NAMES={},BR=new Set(),MAXFB='',MAXREV='',chart,GEN='';
 
-let KPI=[],KPISP=[],CAMPFAM={};const COSTOPT={alloc:true,vat:false};
+let KPI=[],KPIP={},KPIUNK=[],CAMPFAM={};const COSTOPT={alloc:true,vat:false,exBr:false};   // exBr=false: chi tiêu tổng (gồm Branding); true: loại chiến dịch Branding
 
 /* ===== Lọc theo tài khoản quảng cáo (TKQC) ===== */
 let ACC=[],SELACC=new Set(),CUR={};
@@ -237,7 +239,7 @@ function init(d){
   for(const id in NAMES.campaign)if(norm(NAMES.campaign[id]).includes(CFG.BRANDING_KEYWORD))BR.add(String(id));
   detectCols();
   CAMPFAM={};for(const id in NAMES.campaign){const n=norm(NAMES.campaign[id]),p=CFG.PRODUCTS.find(p=>n.includes(norm(p.code)));CAMPFAM[String(id)]=p?p.code:null}
-  KPI=parseKpi(d.kpi);KPISP=parseKpiSp(d.kpi_sp);
+  KPI=parseKpi(d.kpi);
   REV=d.revenue.rows.map(r=>({date:r[0],rev:COL.rev>=0?num(r[COL.rev]):0,ord:COL.ord>=0?num(r[COL.ord]):0,
     canOrd:COL.canOrd>=0?num(r[COL.canOrd]):0,canRev:COL.canRev>=0?num(r[COL.canRev]):0,dim:DIMS.map(i=>r[i])}));
   MAXREV=REV.reduce((m,r)=>r.date>m?r.date:m,'');
@@ -393,8 +395,8 @@ function famAgg(a,b,pj,vat){
   let pool=0,pm=0,pp=0;const pc={};
   for(const r of FB){if(r[0]<a||r[0]>b)continue;
     const id=String(r[1]),fam=CAMPFAM[id],br=BR.has(id);
-    if(fam){R[fam].mess+=r[9];R[fam].pur+=r[11];if(!br)R[fam].own+=r[4]*vk}
-    else{pm+=r[9];pp+=r[11];if(!br){pool+=r[4]*vk;pc[id]=(pc[id]||0)+r[4]*vk}}}
+    if(fam){R[fam].mess+=r[9];R[fam].pur+=r[11];if(!br||!COSTOPT.exBr)R[fam].own+=r[4]*vk}
+    else{pm+=r[9];pp+=r[11];if(!br||!COSTOPT.exBr){pool+=r[4]*vk;pc[id]=(pc[id]||0)+r[4]*vk}}}
   if(pj>=0)for(const r of REV){if(r.date<a||r.date>b)continue;
     const o=R[famOfName(String(r.dim[pj]??''))];o.net+=r.rev;o.refund+=r.canRev}
   let left=pool;
@@ -415,13 +417,14 @@ function costTable(first,rows,g){
   if(g.left>0||g.pm||g.pp)body.push([`<span class="mu">Chiến dịch chung (chưa gắn sản phẩm)</span>`,nz(g.left),dash,`<b>${nz(g.left)}</b>`,dash,dash,dash,dash,nz(g.pm),nz(g.pp)]);
   return tblT(hd,body,line('Tổng',sumAll(rows.map(x=>x[1]),g)));
 }
-const costOpts=()=>`<div class="opts"><label><input type="checkbox" data-opt="alloc"${COSTOPT.alloc?' checked':''}> Phân bổ chi phí chiến dịch chung theo tỷ trọng doanh thu</label><label><input type="checkbox" data-opt="vat"${COSTOPT.vat?' checked':''}> Cộng ${f(CFG.VAT*100,0)}% VAT vào chi phí</label></div>`;
+const costOpts=()=>`<div class="opts"><label><input type="checkbox" data-opt="alloc"${COSTOPT.alloc?' checked':''}> Phân bổ chi phí chiến dịch chung theo tỷ trọng doanh thu</label><label><input type="checkbox" data-opt="vat"${COSTOPT.vat?' checked':''}> Cộng ${f(CFG.VAT*100,0)}% VAT vào chi phí</label><label><input type="checkbox" data-opt="exBr"${COSTOPT.exBr?' checked':''}> Loại trừ chi tiêu chiến dịch Branding</label></div>`;
+const kpiOpts=()=>`<div class="opts"><label><input type="checkbox" data-opt="exBr"${COSTOPT.exBr?' checked':''}> Loại trừ chi tiêu chiến dịch Branding (chỉ giữ chiến dịch không chứa chữ "${esc(CFG.BRANDING_KEYWORD)}")</label><label><input type="checkbox" data-opt="alloc"${COSTOPT.alloc?' checked':''}> Phân bổ chi phí chung theo tỷ trọng doanh thu (bảng sản phẩm)</label></div>`;
 function poolInfo(g,a,b){
   const ids=new Set();let brS=0;
   for(const r of FB){if(r[0]<a||r[0]>b)continue;const id=String(r[1]);if(r[4]>0)ids.add(id);if(BR.has(id))brS+=r[4]}
   let m=0;ids.forEach(id=>{if(CAMPFAM[id])m++});
   const pc=Object.entries(g.pc).sort((x,y)=>y[1]-x[1]).slice(0,15);
-  return `<div class="mu" style="margin-top:6px">Nhận diện ${m}/${ids.size} chiến dịch có chi tiêu theo mã sản phẩm trong tên chiến dịch. Đã loại ${f(brS)} chi tiêu chiến dịch Branding.${COSTOPT.vat?' Chi phí đã gồm VAT.':''} Doanh thu thuần = cột Doanh_thu của tab Doanh_thu (đã trừ hoàn); Doanh thu bán = thuần + hoàn.</div>
+  return `<div class="mu" style="margin-top:6px">Nhận diện ${m}/${ids.size} chiến dịch có chi tiêu theo mã sản phẩm trong tên chiến dịch. ${COSTOPT.exBr?`Đã loại ${f(brS)} chi tiêu chiến dịch Branding.`:`Đã tính cả ${f(brS)} chi tiêu chiến dịch Branding.`}${COSTOPT.vat?' Chi phí đã gồm VAT.':''} Doanh thu thuần = cột Doanh_thu của tab Doanh_thu (đã trừ hoàn); Doanh thu bán = thuần + hoàn.</div>
   <details style="margin-top:6px"><summary class="mu" style="cursor:pointer">Xem chiến dịch chưa gắn sản phẩm (tính vào chi phí chung)</summary><div class="mu">${pc.length?pc.map(([id,s])=>`${esc((NAMES.campaign||{})[id]||id)}: ${f(s)}`).join('<br>'):'Không có'}</div></details>`;
 }
 const noProd=T=>`<div class="card st-warn"><h2>${T}</h2><div class="mu">Chưa tìm thấy cột sản phẩm trong tab Doanh_thu (tên cột cần chứa chữ "sản phẩm") nên chưa tính được.</div></div>`;
@@ -443,19 +446,26 @@ function costCatCard(pj,a,b){
 }
 
 /* ===== Tiến độ KPI tháng - giai đoạn ===== */
-function parseKpi(t){
-  const out=[];
-  for(const r of (t&&t.rows)||[]){
-    const y=Math.round(num(r[0])),m=Math.round(num(r[1])),mt=String(r[2]||'').match(/(\d{1,2})\s*\/\s*(\d{1,2})\s*-\s*(\d{1,2})\s*\/\s*(\d{1,2})/);
-    if(!y||!m||!mt)continue;
-    const sd=+mt[1],sm=+mt[2],ed=+mt[3],em=+mt[4];
-    out.push({y,m,sd,ed,start:`${y}-${pad(sm)}-${pad(sd)}`,end:`${y}-${pad(em)}-${pad(ed)}`,dt:num(r[3]),cp:num(r[4])});
-  }
-  return out;
+function famOfSuffix(x){
+  if(x==='khac')return'OTHER';
+  const p=CFG.PRODUCTS.find(p=>{const c=norm(p.code);return c===x||c.endsWith(' '+x)||norm(p.label)===x});
+  return p?p.code:null;
 }
-function parseKpiSp(t){
-  const out=[];
-  for(const r of (t&&t.rows)||[]){const y=Math.round(num(r[0])),m=Math.round(num(r[1]));if(!y||!m||!r[2])continue;out.push({y,m,key:norm(r[2]),sl:num(r[3]),dt:num(r[4])})}
+function parseKpi(t){
+  const out=[];KPIP={};KPIUNK=[];
+  const cols=(t&&t.cols)||[],H=cols.map(norm);
+  const at=(re,fb)=>{const i=H.findIndex(h=>re.test(h));return i>=0?i:fb};
+  const ci={y:at(/^nam/,0),m:at(/^thang/,1),g:at(/giai doan/,2),dt:at(/^doanh thu kpi$/,3),cp:at(/^chi tieu kpi$/,4)};
+  const pcols=[];   // cột Doanh_thu_KPI_&lt;mã&gt;: dòng GĐ 01-10 = DT KPI cả tháng, dòng GĐ 11-20 = CP KPI cả tháng
+  H.forEach((h,i)=>{const mt=h.match(/^doanh thu kpi (.+)$/);if(!mt)return;
+    const fam=famOfSuffix(mt[1].trim());if(fam)pcols.push({i,fam});else KPIUNK.push(cols[i])});
+  for(const r of (t&&t.rows)||[]){
+    const y=Math.round(num(r[ci.y])),m=Math.round(num(r[ci.m])),mt=String(r[ci.g]||'').match(/(\d{1,2})\s*\/\s*(\d{1,2})\s*-\s*(\d{1,2})\s*\/\s*(\d{1,2})/);
+    if(!y||!m||!mt)continue;
+    const sd=+mt[1],sm=+mt[2],ed=+mt[3],em=+mt[4],gd=sd<=10?1:(sd<=20?2:3);
+    if(gd<3)pcols.forEach(pc=>{const v=num(r[pc.i]);if(v){const o=KPIP[y+'-'+m]||(KPIP[y+'-'+m]={}),q=o[pc.fam]||(o[pc.fam]={dt:0,cp:0});if(gd===1)q.dt=v;else q.cp=v}});
+    out.push({y,m,sd,ed,start:`${y}-${pad(sm)}-${pad(sd)}`,end:`${y}-${pad(em)}-${pad(ed)}`,dt:num(r[ci.dt]),cp:num(r[ci.cp])});
+  }
   return out;
 }
 const fM=x=>f(x/1e6,1)+'M';
@@ -469,7 +479,7 @@ function kpiSection(b,pj){
   let asOf=b;if(MAXREV&&MAXREV>=ms&&MAXREV<b)asOf=MAXREV;
   const n=+asOf.slice(8,10),dayP=n/N,k1=1+CFG.VAT;
   const dtR=(x,z)=>REV.reduce((s,r)=>(r.date>=x&&r.date<=z)?s+r.rev:s,0);
-  const spR=(x,z)=>{let s=0;for(const r of FB){if(r[0]>=x&&r[0]<=z&&!BR.has(String(r[1])))s+=r[4]}return s};
+  const spR=(x,z)=>{let s=0;for(const r of FB){if(r[0]>=x&&r[0]<=z&&(!COSTOPT.exBr||!BR.has(String(r[1]))))s+=r[4]}return s};
   const kDT=st.reduce((s,k)=>s+k.dt,0),kCP=st.reduce((s,k)=>s+k.cp,0),kR=kDT?kCP/kDT:null;
   const dt=dtR(ms,asOf),sp=spR(ms,asOf)*k1;
   const pct=kDT?dt/kDT:null,rr=n?dt/n*N:0,need=N>n?(kDT-dt)/(N-n):null,spRR=n?sp/n*N:0;
@@ -484,34 +494,34 @@ function kpiSection(b,pj){
   const stRows=st.map((k,i)=>{
     const started=k.start<=asOf,e2=k.end<asOf?k.end:asOf,len=diff(k.start,k.end)+1,done=started?diff(k.start,e2)+1:0;
     const dS=started?dtR(k.start,e2):null,sS=started?spR(k.start,e2)*k1:null,kr=k.dt?k.cp/k.dt:null;
-    const c=(started&&dS>0&&kr!==null)?sS/dS:null;
+    const c=(started&&dS>0&&kr!==null)?sS/dS:null,rrS=(started&&done>0)?(done>=len?dS:dS/done*len):null;
     const lab=`GĐ${i+1} · ${k.sd}-${k.ed}/${pad(m)}`;
-    return [started?lab:`<span class="mu">${lab}</span>`,f(k.dt),started?f(dS):dash,(started&&k.dt)?f(dS/k.dt*100,0)+'%':dash,`${done}/${len} ngày`,f(k.cp),started?f(sS):dash,f(k.cp),kr===null?dash:f(kr*100,1)+'%',c===null?dash:pill(f(c*100,0)+'%',stCost(c,kr))];
+    return [started?lab:`<span class="mu">${lab}</span>`,f(k.dt),started?f(dS):dash,(started&&k.dt)?f(dS/k.dt*100,0)+'%':dash,`${done}/${len} ngày`,
+      rrS===null?dash:f(rrS),(rrS!==null&&k.dt)?pill(f(rrS/k.dt*100,0)+'%',stUp(rrS/k.dt,1)):dash,
+      f(k.cp),started?f(sS):dash,f(k.cp),kr===null?dash:f(kr*100,1)+'%',c===null?dash:pill(f(c*100,0)+'%',stCost(c,kr))];
   });
-  const stTbl=tbl(['Giai đoạn','DT KPI','DT thực','% KPI','Tiến độ ngày','CP QC KPI (gồm VAT)','CP QC thực (gồm VAT)','CP tổng KPI','CP/DT KPI','CP QC/DT thực'],stRows);
+  const totSt=['Tổng tháng',f(kDT),f(dt),kDT?f(dt/kDT*100,0)+'%':dash,`${n}/${N} ngày`,f(rr),kDT?pill(f(rr/kDT*100,0)+'%',stUp(rr/kDT,1)):dash,
+    f(kCP),f(sp),f(kCP),kR===null?dash:f(kR*100,1)+'%',(cr===null||kR===null)?dash:pill(f(cr*100,0)+'%',stCost(cr,kR))];
+  const stTbl=tblT(['Giai đoạn','DT KPI','DT thực','% KPI','Tiến độ ngày','Run-rate DT','Run-rate / KPI','CP QC KPI (gồm VAT)','CP QC thực (gồm VAT)','CP tổng KPI','CP/DT KPI','CP QC/DT thực'],stRows,totSt);
   let prodTbl='';
   if(pj>=0){
     const g=famAgg(ms,asOf,pj,false),R=g.R,kExV=kR===null?null:kR/k1;
-    const spm=KPISP.filter(x=>x.y===y&&x.m===m);
-    const kOf=p=>spm.find(x=>x.key===norm(p.code)||x.key===norm(p.label));
-    const items=[...CFG.PRODUCTS.map(p=>({label:p.label,o:R[p.code],k:kOf(p)})),{label:'Khác',o:R.OTHER,k:spm.find(x=>x.key==='khac')}];
-    const T0={sl:0,dt:0,net:0,rr:0,cp:0,cpk:0,any:false};
-    const rowOf=(label,o,k,isTot)=>{
-      const rrp=n?o.net/n*N:0,cpK=(k&&kExV!==null)?k.dt*kExV:null;
-      const cpdt=o.net>0&&o.total>0?o.total/o.net:null;
-      const dim=!FKEYS.some(x=>o[x])&&!k;
-      return [dim?`<span class="mu">${esc(label)}</span>`:esc(label),k&&k.sl?f(k.sl):dash,k?f(k.dt):dash,nz(o.net),(k&&k.dt)?f(o.net/k.dt*100,0)+'%':dash,nz(rrp),(k&&k.dt)?pill(f(rrp/k.dt*100,0)+'%',stUp(rrp/k.dt,1)):dash,cpK===null?dash:f(cpK),nz(o.total),(kExV===null||!(k||isTot))?dash:f(kExV*100,1)+'%',cpdt===null?dash:pill(f(cpdt*100,1)+'%',kExV===null?stAbs(cpdt*100,CFG.COST_RATIO):stCost(cpdt,kExV))];
+    const kp=KPIP[`${y}-${m}`]||{},hasKp=Object.keys(kp).length>0;
+    const cpEx=v=>CFG.KPI_PRODUCT_CP_INCLUDES_VAT?v/k1:v;
+    const items=[...CFG.PRODUCTS.map(p=>({label:p.label,o:R[p.code],k:kp[p.code]})),{label:'Khác',o:R.OTHER,k:kp.OTHER}];
+    const rowOf=(label,o,k)=>{
+      const rrp=n?o.net/n*N:0,dtK=(k&&k.dt)?k.dt:null,cpK=(k&&k.cp)?(k.ex?k.cp:cpEx(k.cp)):null;
+      const kRt=(dtK&&cpK)?cpK/dtK:kExV,cpdt=(o.net>0&&o.total>0)?o.total/o.net:null,dim=!FKEYS.some(x=>o[x])&&!dtK&&!cpK;
+      return [dim?`<span class="mu">${esc(label)}</span>`:esc(label),dtK?f(dtK):dash,nz(o.net),dtK?f(o.net/dtK*100,0)+'%':dash,nz(rrp),dtK?pill(f(rrp/dtK*100,0)+'%',stUp(rrp/dtK,1)):dash,cpK?f(cpK):dash,nz(o.total),(dtK&&cpK)?f(cpK/dtK*100,1)+'%':dash,cpdt===null?dash:pill(f(cpdt*100,1)+'%',kRt===null?stAbs(cpdt*100,CFG.COST_RATIO):stCost(cpdt,kRt))];
     };
     const body=items.map(x=>rowOf(x.label,x.o,x.k));
-    if(g.left>0)body.push([`<span class="mu">Chiến dịch chung (chưa phân bổ)</span>`,dash,dash,dash,dash,dash,dash,dash,nz(g.left),dash,dash]);
-    const tot=sumAll(items.map(x=>x.o),g),kk=items.reduce((a2,x)=>{if(x.k){a2.sl+=x.k.sl;a2.dt+=x.k.dt;a2.has=true}return a2},{sl:0,dt:0,has:false});
-    const tK=kk.has?{sl:kk.sl,dt:kk.dt}:null;
-    const totRow=rowOf('Tổng',tot,tK,true);totRow[0]='Tổng';
-    prodTbl=tblT(['Sản phẩm','SL KPI','DT KPI','DT thực','% KPI tháng','Run-rate DT','Run-rate / KPI','CP KPI*','CP QC thực*','CP/DT KPI','CP/DT thực'],body,totRow)+
-      `<div class="mu" style="margin-top:6px">* Chưa gồm VAT. CP QC thực lấy từ chiến dịch theo mã sản phẩm${COSTOPT.alloc?' + phần chi phí chung phân bổ theo tỷ trọng doanh thu':''} (đổi ở ô tích trong bảng chi phí phía trên).${spm.length?'':' Chưa có KPI theo sản phẩm: tạo tab KPI_SP (cột Nam_KPI, Thang_KPI, San_pham, SL_KPI, Doanh_thu_KPI) để hiện các cột KPI.'}</div>`;
+    if(g.left>0)body.push([`<span class="mu">Chiến dịch chung (chưa phân bổ)</span>`,dash,dash,dash,dash,dash,dash,nz(g.left),dash,dash]);
+    const totRow=rowOf('Tổng',sumAll(items.map(x=>x.o),g),{dt:kDT,cp:kCP/k1,ex:true});totRow[0]='Tổng';
+    prodTbl=tblT(['Sản phẩm','DT KPI','DT thực','% KPI tháng','Run-rate DT','Run-rate / KPI','CP KPI*','CP QC thực*','CP/DT KPI','CP/DT thực'],body,totRow)+
+      `<div class="mu" style="margin-top:6px">* Chưa gồm VAT. CP QC thực lấy từ chiến dịch theo mã sản phẩm${COSTOPT.alloc?' + phần chi phí chung phân bổ theo tỷ trọng doanh thu':''} (đổi ở ô tích trong bảng chi phí phía trên).${hasKp?` DT KPI lấy ở dòng GĐ 01-10 và CP KPI lấy ở dòng GĐ 11-20 của cột Doanh_thu_KPI_&lt;mã&gt; trong tab KPI_FB${CFG.KPI_PRODUCT_CP_INCLUDES_VAT?`; CP KPI nhập đã gồm VAT nên bảng chia cho ${f(k1,2)}`:''}. Dòng Tổng lấy KPI tháng từ các dòng giai đoạn.`:' Chưa có KPI theo sản phẩm của tháng này: điền vào các cột Doanh_thu_KPI_&lt;mã&gt; trong tab KPI_FB (dòng GĐ 01-10: DT KPI cả tháng; dòng GĐ 11-20: CP KPI cả tháng).'}${KPIUNK.length?` Cột KPI chưa nhận diện được sản phẩm: ${esc(KPIUNK.join(', '))}.`:''}</div>`;
   }
   const asNote=asOf<b?` (doanh thu mới có đến ${asOf.slice(8,10)}/${asOf.slice(5,7)})`:'';
-  return `<div class="card"><h2>${T} <span class="mu" style="font-weight:400">DT đến ${asOf.slice(8,10)}/${asOf.slice(5,7)} · ${n}/${N} ngày${asNote}</span></h2>${cards}<div class="sc">${stTbl}</div>${prodTbl?`<div class="sc" style="margin-top:14px">${prodTbl}</div>`:''}<div class="mu" style="margin-top:6px">Tháng KPI lấy theo ngày kết thúc của bộ lọc thời gian. "Gồm VAT" = chi tiêu Facebook không gồm chiến dịch Branding × ${f(k1,2)}. Run-rate = số lũy kế ÷ số ngày đã qua × số ngày trong tháng.</div></div>`;
+  return `<div class="card"><h2>${T} <span class="mu" style="font-weight:400">DT đến ${asOf.slice(8,10)}/${asOf.slice(5,7)} · ${n}/${N} ngày${asNote}</span></h2>${kpiOpts()}${cards}<div class="sc">${stTbl}</div>${prodTbl?`<div class="sc" style="margin-top:14px">${prodTbl}</div>`:''}<div class="mu" style="margin-top:6px">Tháng KPI lấy theo ngày kết thúc của bộ lọc thời gian. "Gồm VAT" = chi tiêu Facebook ${COSTOPT.exBr?'không gồm chiến dịch Branding':'tổng (gồm cả chiến dịch Branding)'} × ${f(k1,2)}. Run-rate = số lũy kế ÷ số ngày đã qua × số ngày của kỳ (từng giai đoạn hoặc cả tháng); giai đoạn đã kết thúc thì bằng số thực tế.</div></div>`;
 }
 
 let PIES=[],PIEQ=[];
