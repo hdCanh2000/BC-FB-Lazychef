@@ -2,7 +2,7 @@ name: Cap nhat du lieu FB Ads
 
 on:
   schedule:
-    - cron: "0 1,7,10 * * *"   # Chạy vào 1h, 7h, 10h UTC (tương đương 8h, 14h, 17h giờ Việt Nam)
+    - cron: "0 1,8,14 * * *"   # Chạy vào 1h, 7h, 10h UTC (tương đương 8h, 14h, 17h giờ Việt Nam)
   workflow_dispatch:       # cho phep bam chay thu bang tay
 
 jobs:
