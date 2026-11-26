@@ -58,6 +58,12 @@ th{font-size:12px;color:var(--mu);font-weight:600}
 .pb i{display:block;height:100%;border-radius:3px}
 .pb u{position:absolute;top:-3px;width:2px;height:12px;background:var(--tx)}
 .b-ok{background:var(--ok)}.b-warn{background:var(--warn)}.b-bad{background:var(--bad)}
+.adgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px;margin-bottom:8px}
+.adgrid .card{margin:0}
+.mg{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;margin-top:4px}
+.pager{display:flex;gap:12px;align-items:center;justify-content:center;margin:6px 0}
+.pager button{padding:4px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx);cursor:pointer;font:inherit}
+.pager button:disabled{opacity:.4;cursor:default}
 .bestgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:8px}
 .bestgrid .card{margin:0}
 .bn{font-weight:600;word-break:break-word}
@@ -111,8 +117,9 @@ th{font-size:12px;color:var(--mu);font-weight:600}
 
 <div class="card"><h2>So sánh theo
   <select id="unit"><option value="w">tuần</option><option value="m" selected>tháng</option><option value="q">quý</option><option value="y">năm</option></select></h2>
+  <div class="opts" id="cmpopts"></div>
   <div class="sc" id="cmp"></div>
-  <div class="mu" style="margin-top:6px">Kỳ gần nhất có thể chưa đủ ngày nên số liệu thấp hơn là bình thường. Δ là thay đổi so với kỳ ngay trước.</div></div>
+  <div class="mu" style="margin-top:6px">Kỳ gần nhất có thể chưa đủ ngày nên số liệu thấp hơn là bình thường. % là thay đổi so với kỳ ngay trước. Số đơn thực = số đơn mua − số đơn hoàn hủy. ROAS và Chi tiêu / DT thực dùng cùng cột Chi tiêu tổng (theo hai ô tích).</div></div>
 
 <div class="sec">Quảng cáo hiệu quả nhất trong kỳ đang xem</div>
 <div id="best"></div>
@@ -152,6 +159,8 @@ const CFG={
     {code:'MXCT-3in1',label:'Máy xay cầm tay 3in1',cat:'Máy xay cầm tay',kw:['lc 03st','xay cam tay']},
     {code:'NieuGom-2500ML',label:'Niêu gốm 2500ML',cat:'Sản phẩm khác',kw:['nieu gom']}
   ],
+  ADS:{page:6,minGood:6,minPoor:3},   // quảng cáo: số thẻ mỗi trang; tối thiểu 6 ad tốt, 3 ad kém
+  POOR:{minSpendShare:0.005,spareIfMessages:false}, // ad kém: chi tiêu >= 0,5% tổng chi tiêu và (không có doanh thu hoặc chi tiêu/doanh thu > ngưỡng đỏ). spareIfMessages=true: ad có tin nhắn thì không tính là kém
   IDLE:{minSpendShare:0.05}           // quảng cáo chiếm >=5% chi tiêu mà không có tin nhắn/đơn -> cần lưu ý
 };
 /* ====================================================== */
@@ -611,51 +620,79 @@ function compare(){
   const key=s=>{if(u==='y')return s.slice(0,4);if(u==='m')return s.slice(0,7);
     if(u==='q')return s.slice(0,4)+'-Q'+(Math.floor((+s.slice(5,7)-1)/3)+1);
     const w=(new Date(s).getUTCDay()+6)%7;return addDays(s,-w)};
-  const g=k=>m[k]||(m[k]={spend:0,nb:0,msg:0,rev:0,ord:0,canOrd:0});
-  for(const r of FB){const o=g(key(r[0]));o.spend+=r[4];if(!BR.has(String(r[1])))o.nb+=r[4];o.msg+=r[9]}
-  for(const r of REV){const o=g(key(r.date));o.rev+=r.rev;o.ord+=r.ord;o.canOrd+=r.canOrd}
-  const ks=Object.keys(m).sort().reverse(),hasC=COL.canOrd>=0&&COL.ord>=0;
-  const hd=['Kỳ','Chi tiêu','Δ chi tiêu','Chi tiêu không Branding','Doanh thu thực','Δ doanh thu','ROAS thực','Chi tiêu thực kênh / DT','Tin nhắn','CP/tin nhắn'];
-  if(hasC)hd.push('Tỷ lệ hoàn hủy');
+  const vk=COSTOPT.vat?1+CFG.VAT:1;
+  const g=k=>m[k]||(m[k]={spend:0,rev:0,ord:0,canOrd:0,canRev:0});
+  for(const r of FB){if(COSTOPT.exBr&&BR.has(String(r[1])))continue;g(key(r[0])).spend+=r[4]*vk}
+  for(const r of REV){const o=g(key(r.date));o.rev+=r.rev;o.ord+=r.ord;o.canOrd+=r.canOrd;o.canRev+=r.canRev}
+  const ks=Object.keys(m).sort().reverse();
+  $('#cmpopts').innerHTML=`<label><input type="checkbox" data-opt="vat"${COSTOPT.vat?' checked':''}> Cộng ${f(CFG.VAT*100,0)}% VAT vào chi tiêu</label><label><input type="checkbox" data-opt="exBr"${COSTOPT.exBr?' checked':''}> Chi tiêu không gồm Branding (loại chiến dịch Branding)</label>`;
+  const hd=['Kỳ','Chi tiêu tổng','% chi tiêu','Số đơn thực','Doanh thu thực','% doanh thu thực','ROAS','Chi tiêu tổng / DT thực','Số đơn hoàn hủy','DT hoàn hủy','Tỷ lệ hoàn hủy'];
   $('#cmp').innerHTML=tbl(hd,ks.slice(0,16).map((k,i)=>{
-    const o=m[k],p=m[ks[i+1]]||null,cr=o.rev?o.nb/o.rev*100:null;
-    const r=[u==='w'?'Tuần '+k:k,f(o.spend),p?dHtml(pch(o.spend,p.spend),null):'—',f(o.nb),f(o.rev),p?dHtml(pch(o.rev,p.rev),true):'—',
-      F(o.spend?o.rev/o.spend:null,2),cr===null?'—':pill(f(cr,1)+'%',stAbs(cr,CFG.COST_RATIO)),f(o.msg),F(o.msg?o.spend/o.msg:null)];
-    if(hasC){const rt=o.ord?o.canOrd/o.ord*100:null;r.push(rt===null?'—':pill(f(rt,1)+'%',stAbs(rt,CFG.CANCEL_RATE)))}
-    return r}));
+    const o=m[k],p=m[ks[i+1]]||null,ok=o.rev>0&&o.spend>0,cr=ok?o.spend/o.rev*100:null,rt=o.ord>0?o.canOrd/o.ord*100:null;
+    return [u==='w'?'Tuần '+k:k,f(o.spend),p?dHtml(pch(o.spend,p.spend),null):'—',COL.ord>=0?f(o.ord-o.canOrd):dash,f(o.rev),p?dHtml(pch(o.rev,p.rev),true):'—',
+      ok?f(o.rev/o.spend,2):dash,cr===null?dash:pill(f(cr,1)+'%',stAbs(cr,CFG.COST_RATIO)),COL.canOrd>=0?f(o.canOrd):dash,COL.canRev>=0?f(o.canRev):dash,
+      (COL.canOrd>=0&&COL.ord>=0&&rt!==null)?pill(f(rt,1)+'%',stAbs(rt,CFG.CANCEL_RATE)):dash];
+  }));
+}
+/* ===== Quảng cáo tốt / kém ===== */
+let ADSORT='combo',ADCTX=null,ADLIST={good:[],poor:[]},ADPAGE={good:0,poor:0};
+const adRoas=o=>o.spend?o.frev/o.spend:0;
+const adName=id=>(NAMES.ad||{})[id]||id;
+function sortGood(arr,mode){
+  const rk=fn=>{const mp=new Map();[...arr].sort((x,y)=>fn(y)-fn(x)).forEach((o,i)=>mp.set(o,i));return mp};
+  const r1=rk(o=>o.frev),r2=rk(adRoas);
+  const key=mode==='rev'?(o=>-o.frev):(mode==='roas'?(o=>-adRoas(o)):(o=>r1.get(o)+r2.get(o)));
+  return [...arr].sort((x,y)=>(key(x)-key(y))||(y.frev-x.frev));
+}
+function adCard(o,rank,kind){
+  const ratio=o.frev>0?o.spend/o.frev*100:null,st=ratio===null?'bad':stAbs(ratio,CFG.COST_RATIO),fq=o.reach?o.impr/o.reach:null;
+  const L=(l,v)=>`<div class="ln"><span>${l}</span><b>${v}</b></div>`;
+  return `<div class="card st-${st}"><div class="k">#${rank} · ${kind}</div><div class="bn">${esc(adName(o.id))}</div><div class="mu">ID: ${esc(o.id)}</div><div class="mg">`+
+    L('Chi tiêu',f(o.spend))+L('Hiển thị',f(o.impr))+L('Tiếp cận*',f(o.reach))+L('ThruPlay',f(o.thru))+L('Click link',f(o.clicks))+L('Tin nhắn',f(o.msg))+L('Bình luận',f(o.cmt))+
+    L('Lượt mua',f(o.pur))+L('Doanh thu',f(o.frev))+L('ROAS',F(adRoas(o),2))+L('Chi tiêu / doanh thu',F(ratio,1,'%'))+L('Tần suất*',F(fq,2))+
+    L('CTR link',F(o.impr?o.clicks/o.impr*100:null,2,'%'))+L('CPM',F(o.impr?o.spend/o.impr*1000:null))+L('CPC link',F(o.clicks?o.spend/o.clicks:null))+`</div></div>`;
+}
+function pagerHtml(k,total){
+  const P=CFG.ADS.page,pages=Math.max(1,Math.ceil(total/P)),p=Math.min(ADPAGE[k],pages-1);
+  return pages>1?`<div class="pager"><button data-pg="${k}" data-dir="-1"${p<=0?' disabled':''}>‹ Trước</button><span class="mu">Trang ${p+1}/${pages} · ${total} quảng cáo</span><button data-pg="${k}" data-dir="1"${p>=pages-1?' disabled':''}>Sau ›</button></div>`:`<div class="mu" style="text-align:center">${total} quảng cáo</div>`;
+}
+function drawAds(){
+  const P=CFG.ADS.page,box=(k,list,kind)=>{const pages=Math.max(1,Math.ceil(list.length/P));ADPAGE[k]=Math.max(0,Math.min(ADPAGE[k],pages-1));const st=ADPAGE[k]*P;return list.slice(st,st+P).map((o,i)=>adCard(o,st+i+1,kind)).join('')};
+  const g=ADLIST.good,po=ADLIST.poor,sel=v=>ADSORT===v?' selected':'';
+  $('#best').innerHTML=`<div class="card"><h2>Quảng cáo có doanh thu và ROAS tốt nhất</h2>
+    <div class="opts"><label>Xếp hạng theo <select id="adsort"><option value="combo"${sel('combo')}>Doanh thu và ROAS (cộng thứ hạng)</option><option value="rev"${sel('rev')}>Doanh thu</option><option value="roas"${sel('roas')}>ROAS</option></select></label>
+    <label><input type="checkbox" data-opt="exBr"${COSTOPT.exBr?' checked':''}> Loại trừ quảng cáo thuộc chiến dịch Branding</label></div>
+    ${g.length?`<div class="adgrid">${box('good',g,'tốt')}</div>${pagerHtml('good',g.length)}`:'<div class="note st-warn">Chưa có quảng cáo nào ghi nhận doanh thu trong kỳ này.</div>'}
+    <div class="mu" style="margin-top:6px">Lượt mua, doanh thu và ROAS ở cấp quảng cáo do Facebook ghi nhận (Pixel hoặc Conversions API), khác doanh thu thực trong tab Doanh_thu. * Tiếp cận cộng từ từng ngày nên Tần suất (hiển thị ÷ tiếp cận) thấp hơn thực tế khi xem nhiều ngày. Chỉ xếp hạng quảng cáo có doanh thu; quảng cáo chiếm dưới ${f(CFG.BEST.minSpendShare*100,0)}% tổng chi tiêu xếp sau; quảng cáo thuộc nhóm kém chỉ được dùng để bù cho đủ ${CFG.ADS.minGood} khi không đủ quảng cáo tốt.</div></div>
+  <div class="card"><h2 class="t-bad">Quảng cáo hiệu quả kém cần xem lại</h2>
+    ${po.length?`<div class="adgrid">${box('poor',po,'kém')}</div>${pagerHtml('poor',po.length)}`:'<div class="note st-ok">Không có quảng cáo nào đạt tiêu chí kém trong kỳ này.</div>'}
+    <div class="mu" style="margin-top:6px">Kém = chi tiêu từ ${f(CFG.POOR.minSpendShare*100,1)}% tổng chi tiêu và (không có doanh thu hoặc chi tiêu / doanh thu trên ${f(CFG.COST_RATIO.red,0)}%), xếp theo chi tiêu giảm dần. Nếu có ít hơn ${CFG.ADS.minPoor} quảng cáo đạt tiêu chí, trang hiển thị ${CFG.ADS.minPoor} quảng cáo có ROAS thấp nhất. Quảng cáo nhận diện thương hiệu hoặc nhắn tin có thể không có doanh thu Pixel, Sếp xem thêm cột tin nhắn trước khi kết luận.</div></div>`;
 }
 function bestAds(a,b,cur,out){
+  ADCTX={a,b,cur};
   const m={};
-  for(const r of FB){if(r[0]<a||r[0]>b)continue;
-    const o=m[r[3]]||(m[r[3]]={id:r[3],spend:0,impr:0,clicks:0,msg:0,pur:0,frev:0});
-    o.spend+=r[4];o.impr+=r[6];o.clicks+=r[7];o.msg+=r[9];o.pur+=r[11];o.frev+=r[12]}
-  const ads=Object.values(m),B=CFG.BEST,minS=cur.spend*B.minSpendShare;
-  const crit=[
-    {t:'ROAS Pixel cao nhất',ok:o=>o.pur>=B.minPurchases&&o.frev>0,key:o=>-(o.frev/o.spend),note:`từ ${B.minPurchases} đơn Pixel`},
-    {t:'Chi phí/tin nhắn thấp nhất',ok:o=>o.msg>=B.minMsg,key:o=>o.spend/o.msg,note:`từ ${B.minMsg} tin nhắn`},
-    {t:'CPC link thấp nhất',ok:o=>o.clicks>=B.minClicks,key:o=>o.spend/o.clicks,note:`từ ${B.minClicks} click link`}];
-  let h='',any=false;
-  for(const c of crit){
-    const el=ads.filter(o=>o.spend>0&&o.spend>=minS&&c.ok(o)).sort((x,y)=>c.key(x)-c.key(y))[0];
-    if(!el)continue;any=true;
-    const nm=(NAMES.ad||{})[el.id]||el.id;
-    out.push({st:'ok',text:`Quảng cáo tốt nhất (${c.t.toLowerCase()}): ${nm}`});
-    h+=`<div class="card st-ok"><div class="k">${c.t}</div><div class="bn">${esc(nm)}</div><div class="mu">ID: ${esc(el.id)}</div>
-      <div class="ln"><span>Chi tiêu</span><b>${f(el.spend)}</b></div>
-      <div class="ln"><span>Hiển thị</span><b>${f(el.impr)}</b></div>
-      <div class="ln"><span>Click link · CTR · CPC</span><b>${f(el.clicks)} · ${F(el.impr?el.clicks/el.impr*100:null,2,'%')} · ${F(el.clicks?el.spend/el.clicks:null)}</b></div>
-      <div class="ln"><span>Tin nhắn · CP/tin nhắn</span><b>${f(el.msg)} · ${F(el.msg?el.spend/el.msg:null)}</b></div>
-      <div class="ln"><span>Đơn Pixel · ROAS Pixel</span><b>${f(el.pur)} · ${F(el.spend?el.frev/el.spend:null,2)}</b></div></div>`;
-  }
-  if(!any)h='<div class="note st-warn">Chưa có quảng cáo nào đủ điều kiện để xếp hạng trong kỳ này (cần chi tiêu tối thiểu và đủ số tin nhắn, click hoặc đơn).</div>';
-  else h=`<div class="bestgrid">${h}</div><div class="mu">Điều kiện xếp hạng: quảng cáo chiếm ít nhất ${f(B.minSpendShare*100,0)}% chi tiêu của kỳ, kèm ngưỡng tối thiểu ở từng tiêu chí. ROAS Pixel do Facebook ghi nhận, khác doanh thu thực.</div>`;
-  const idle=ads.filter(o=>o.spend>=cur.spend*CFG.IDLE.minSpendShare&&o.msg===0&&o.pur===0).sort((x,y)=>y.spend-x.spend).slice(0,3);
-  if(idle.length){
-    out.push({st:'warn',text:`${idle.length} quảng cáo chi tiêu lớn nhưng chưa có tin nhắn hoặc đơn: ${idle.map(o=>(NAMES.ad||{})[o.id]||o.id).join('; ')}`});
-    h+=`<div class="card st-warn" style="margin-top:10px"><h2>Cần lưu ý: chi tiêu lớn nhưng chưa có tin nhắn hoặc đơn Pixel</h2>${tbl(['Quảng cáo','ID','Chi tiêu','Hiển thị','Click link'],idle.map(o=>[esc((NAMES.ad||{})[o.id]||o.id),`<span class="mu">${esc(o.id)}</span>`,f(o.spend),f(o.impr),f(o.clicks)]))}<div class="mu" style="margin-top:6px">Nếu đây là quảng cáo nhận diện thương hiệu hoặc tiếp cận thì việc không có tin nhắn là bình thường.</div></div>`;
-  }
-  $('#best').innerHTML=h;
+  for(const r of FB){if(r[0]<a||r[0]>b)continue;const cid=String(r[1]);if(COSTOPT.exBr&&BR.has(cid))continue;
+    const o=m[r[3]]||(m[r[3]]={id:r[3],cid,spend:0,reach:0,impr:0,thru:0,clicks:0,msg:0,cmt:0,pur:0,frev:0});
+    o.spend+=r[4];o.reach+=r[5];o.impr+=r[6];o.thru+=r[8];o.clicks+=r[7];o.msg+=r[9];o.cmt+=r[10];o.pur+=r[11];o.frev+=r[12]}
+  const ads=Object.values(m).filter(o=>o.spend>0),tot=ads.reduce((s,o)=>s+o.spend,0);
+  const minG=tot*CFG.BEST.minSpendShare,minP=tot*CFG.POOR.minSpendShare,thr=CFG.COST_RATIO.red/100;
+  const isPoor=o=>o.spend>=minP&&(o.frev>0?o.spend/o.frev>thr:!(CFG.POOR.spareIfMessages&&o.msg>0));
+  const poorSet=new Set(ads.filter(isPoor)),withRev=ads.filter(o=>o.frev>0);
+  const rank=arr=>[...sortGood(arr.filter(o=>o.spend>=minG),ADSORT),...sortGood(arr.filter(o=>o.spend<minG),ADSORT)];
+  let good=rank(withRev.filter(o=>!poorSet.has(o)));
+  if(good.length<CFG.ADS.minGood)good=good.concat(rank(withRev.filter(o=>poorSet.has(o))).slice(0,CFG.ADS.minGood-good.length));
+  let poor=[...poorSet].sort((x,y)=>(y.spend-x.spend)||(adRoas(x)-adRoas(y)));
+  if(poor.length<CFG.ADS.minPoor){const have=new Set(poor);
+    poor=poor.concat(ads.filter(o=>o.spend>=minP&&!have.has(o)).sort((x,y)=>adRoas(x)-adRoas(y)).slice(0,CFG.ADS.minPoor-poor.length))}
+  ADLIST={good,poor};ADPAGE={good:0,poor:0};
+  if(good.length)out.push({st:'ok',text:`Quảng cáo tốt nhất: ${adName(good[0].id)} (ROAS ${F(adRoas(good[0]),2)})`});
+  if(poorSet.size)out.push({st:'warn',text:`${poorSet.size} quảng cáo hiệu quả kém, tổng chi tiêu ${f([...poorSet].reduce((s,o)=>s+o.spend,0))}`});
+  drawAds();
 }
+const optHandler=e=>{const t=e.target;if(t&&t.dataset&&t.dataset.opt){COSTOPT[t.dataset.opt]=!!t.checked;render()}};
+$('#cmpopts').addEventListener('change',optHandler);
+$('#best').addEventListener('change',e=>{const t=e.target;if(t&&t.id==='adsort'){ADSORT=t.value;if(ADCTX)bestAds(ADCTX.a,ADCTX.b,ADCTX.cur,[])}else optHandler(e)});
+$('#best').addEventListener('click',e=>{const t=e.target;if(!t||!t.dataset||!t.dataset.pg)return;ADPAGE[t.dataset.pg]=Math.max(0,(ADPAGE[t.dataset.pg]||0)+(+t.dataset.dir));drawAds()});
 </script>
 </body>
 </html>
