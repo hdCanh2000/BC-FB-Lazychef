@@ -105,9 +105,11 @@ th{font-size:12px;color:var(--mu);font-weight:600}
   <div style="position:relative;height:300px"><canvas id="ch"></canvas></div></div>
 
 <div class="card"><h2>Chi tiết theo
-  <select id="lv"><option value="campaign">chiến dịch</option><option value="adset">nhóm quảng cáo</option><option value="ad">quảng cáo</option></select></h2>
+  <select id="lv"><option value="campaign">chiến dịch</option><option value="adset">nhóm quảng cáo</option><option value="ad">quảng cáo</option></select>
+  <span class="mu" style="font-weight:400;margin-left:8px">Hiển thị <select id="tbsize"><option value="5" selected>5</option><option value="10">10</option><option value="20">20</option></select> dòng mỗi trang</span></h2>
   <div class="sc" id="tb"></div>
-  <div class="mu" style="margin-top:6px">* Tiếp cận được cộng từ từng ngày nên cao hơn số người thực tế. Chỉ hiển thị 200 dòng chi tiêu cao nhất. ROAS Pixel là số do Facebook ghi nhận, không phải doanh thu thực.</div></div>
+  <div id="tbpager"></div>
+  <div class="mu" style="margin-top:6px">* Tiếp cận được cộng từ từng ngày nên cao hơn số người thực tế. Xếp theo chi tiêu giảm dần. Doanh thu Pixel và ROAS Pixel là số do Facebook ghi nhận ở từng chiến dịch, nhóm quảng cáo hoặc quảng cáo, không phải doanh thu thực trong tab Doanh_thu.</div></div>
 
 <div id="rv"></div>
 
@@ -383,15 +385,25 @@ function chartDaily(a,b){
       {label:'Doanh thu thực tế',type:'line',data:ds.map(d=>rv[d]||0),borderColor:'#16a34a',backgroundColor:'#16a34a',tension:.25,pointRadius:2}]},
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false}}});
 }
+let TBROWS=[],TBLV='campaign',TBPAGE=0,TBSIZE=5,TBSIG='';
 function levelTable(a,b){
   const lv=$('#lv').value,ix={campaign:1,adset:2,ad:3}[lv],m={};
   for(const r of FB){if(r[0]<a||r[0]>b)continue;
     const o=m[r[ix]]||(m[r[ix]]={spend:0,reach:0,impr:0,clicks:0,thru:0,msg:0,cmt:0,pur:0,frev:0});
     o.spend+=r[4];o.reach+=r[5];o.impr+=r[6];o.clicks+=r[7];o.thru+=r[8];o.msg+=r[9];o.cmt+=r[10];o.pur+=r[11];o.frev+=r[12]}
-  const rows=Object.entries(m).sort((x,y)=>y[1].spend-x[1].spend).slice(0,200);
-  $('#tb').innerHTML=tbl(['Tên','ID','Chi tiêu','Hiển thị','Tiếp cận*','Click link','CTR link','CPC link','ThruPlay','Tin nhắn','CP/tin nhắn','Bình luận','Đơn Pixel','ROAS Pixel'],
+  TBROWS=Object.entries(m).sort((x,y)=>y[1].spend-x[1].spend);TBLV=lv;
+  const sig=[a,b,lv,FB===FBALL?'all':[...SELACC].join(',')].join('|');
+  if(sig!==TBSIG){TBPAGE=0;TBSIG=sig}
+  drawTb();
+}
+function drawTb(){
+  const lv=TBLV,tot=TBROWS.length,pages=Math.max(1,Math.ceil(tot/TBSIZE));
+  TBPAGE=Math.max(0,Math.min(TBPAGE,pages-1));
+  const s0=TBPAGE*TBSIZE,rows=TBROWS.slice(s0,s0+TBSIZE);
+  $('#tb').innerHTML=tbl(['Tên','ID','Chi tiêu','Hiển thị','Tiếp cận*','Click link','CTR link','CPC link','ThruPlay','Tin nhắn','CP/tin nhắn','Bình luận','Đơn Pixel','Doanh thu Pixel','ROAS Pixel'],
     rows.map(([k,o])=>[esc((NAMES[lv]||{})[k]||k),`<span class="mu">${esc(k)}</span>`,f(o.spend),f(o.impr),f(o.reach),f(o.clicks),
-      F(o.impr?o.clicks/o.impr*100:null,2,'%'),F(o.clicks?o.spend/o.clicks:null),f(o.thru),f(o.msg),F(o.msg?o.spend/o.msg:null),f(o.cmt),f(o.pur),F(o.spend?o.frev/o.spend:null,2)]));
+      F(o.impr?o.clicks/o.impr*100:null,2,'%'),F(o.clicks?o.spend/o.clicks:null),f(o.thru),f(o.msg),F(o.msg?o.spend/o.msg:null),f(o.cmt),f(o.pur),f(o.frev),F(o.spend?o.frev/o.spend:null,2)]));
+  $('#tbpager').innerHTML=tot?`<div class="pager"><button data-dir="-1"${TBPAGE<=0?' disabled':''}>‹ Trước</button><span class="mu">Trang ${TBPAGE+1}/${pages} · dòng ${s0+1}-${s0+rows.length} / ${f(tot)}</span><button data-dir="1"${TBPAGE>=pages-1?' disabled':''}>Sau ›</button></div>`:'<div class="mu" style="text-align:center">Không có dữ liệu trong kỳ này</div>';
 }
 /* ===== Chi phí / doanh thu theo sản phẩm & danh mục ===== */
 const famOfName=nm=>{const n=norm(nm);if(CFG.PRODUCT_OTHER_KW.some(k=>n.includes(k)))return'OTHER';
@@ -692,6 +704,8 @@ function bestAds(a,b,cur,out){
 const optHandler=e=>{const t=e.target;if(t&&t.dataset&&t.dataset.opt){COSTOPT[t.dataset.opt]=!!t.checked;render()}};
 $('#cmpopts').addEventListener('change',optHandler);
 $('#best').addEventListener('change',e=>{const t=e.target;if(t&&t.id==='adsort'){ADSORT=t.value;if(ADCTX)bestAds(ADCTX.a,ADCTX.b,ADCTX.cur,[])}else optHandler(e)});
+$('#tbsize').addEventListener('change',()=>{TBSIZE=+$('#tbsize').value||5;TBPAGE=0;drawTb()});
+$('#tbpager').addEventListener('click',e=>{const t=e.target;if(!t||!t.dataset||!t.dataset.dir)return;TBPAGE=Math.max(0,TBPAGE+(+t.dataset.dir));drawTb()});
 $('#best').addEventListener('click',e=>{const t=e.target;if(!t||!t.dataset||!t.dataset.pg)return;ADPAGE[t.dataset.pg]=Math.max(0,(ADPAGE[t.dataset.pg]||0)+(+t.dataset.dir));drawAds()});
 </script>
 </body>
