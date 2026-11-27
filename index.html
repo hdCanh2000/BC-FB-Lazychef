@@ -11,7 +11,7 @@
 :root[data-theme="dark"]{color-scheme:dark;--bg:#18191a;--card:#242526;--tx:#e4e6eb;--mu:#a8abb0;--bd:#3a3b3c;--ok:#4cd07d;--warn:#f5b942;--bad:#ff6b60;--okbg:#17301f;--warnbg:#3a3010;--badbg:#3d1c1a}
 @media(prefers-color-scheme:dark){:root:not([data-theme="light"]):not([data-theme="dark"]){color-scheme:dark;--bg:#18191a;--card:#242526;--tx:#e4e6eb;--mu:#a8abb0;--bd:#3a3b3c;--ok:#4cd07d;--warn:#f5b942;--bad:#ff6b60;--okbg:#17301f;--warnbg:#3a3010;--badbg:#3d1c1a}}
 *{box-sizing:border-box}
-body{margin:0 auto;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--tx);padding:16px;max-width:1280px}
+body{margin:0 auto;font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--tx);padding:0;height:100vh;height:100dvh;overflow:hidden}
 h1{font-size:20px;margin:0}h2{font-size:15px;margin:0 0 10px}
 .top{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px}
 .mu{color:var(--mu);font-size:12px}
@@ -64,6 +64,34 @@ th{font-size:12px;color:var(--mu);font-weight:600}
 .pager{display:flex;gap:12px;align-items:center;justify-content:center;margin:6px 0}
 .pager button{padding:4px 12px;border:1px solid var(--bd);border-radius:6px;background:var(--card);color:var(--tx);cursor:pointer;font:inherit}
 .pager button:disabled{opacity:.4;cursor:default}
+.app{display:flex;height:100vh;height:100dvh}
+.side{flex:0 0 clamp(230px,17vw,300px);background:var(--card);border-right:1px solid var(--bd);overflow:auto;padding:12px 8px}
+.brand{font-weight:700;font-size:17px;padding:8px 12px 14px}
+.side nav{display:flex;flex-direction:column;gap:3px}
+.nb{display:block;width:100%;text-align:left;padding:11px 12px;border:0;border-left:3px solid transparent;border-radius:8px;background:transparent;color:var(--tx);font:inherit;font-size:15px;cursor:pointer}
+.nb:hover{background:color-mix(in srgb,var(--tx) 8%,transparent)}
+.nb.on{background:color-mix(in srgb,#1877f2 16%,transparent);border-left-color:#1877f2;color:#1877f2;font-weight:700}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{flex:none;padding:12px 16px 6px;background:var(--bg);border-bottom:1px solid var(--bd);position:relative;z-index:30}
+.topbar .top{margin-bottom:6px}
+.topbar #rng{margin:4px 0 2px}
+.content{flex:1;min-height:0;overflow:auto;padding:12px 16px}
+.page[hidden]{display:none}
+.foot{flex:none;background:var(--card);border-top:1px solid var(--bd);padding:6px 16px}
+.fbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px}
+.lnk{border:0;background:transparent;color:#1877f2;cursor:pointer;font:inherit;font-size:12px;padding:0 4px}
+.foot #legend{max-height:34vh;overflow:auto;margin-top:6px}
+@media(max-width:900px){
+  body{height:auto;overflow:auto}
+  .app{display:block;height:auto}
+  .side{position:sticky;top:0;z-index:40;border-right:0;border-bottom:1px solid var(--bd);padding:6px;overflow-x:auto}
+  .brand{display:none}
+  .side nav{flex-direction:row}
+  .nb{width:auto;white-space:nowrap;padding:8px 12px}
+  .main{display:block}
+  .content{overflow:visible}
+  .foot{position:sticky;bottom:0;z-index:40}
+}
 .bestgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:8px}
 .bestgrid .card{margin:0}
 .bn{font-weight:600;word-break:break-word}
@@ -72,61 +100,97 @@ th{font-size:12px;color:var(--mu);font-weight:600}
 </style>
 </head>
 <body>
-<div class="top">
-  <div><h1>Báo cáo Facebook Ads</h1><div class="mu" id="upd">Đang tải…</div></div>
-  <div class="bar">
-    <select id="theme" title="Giao diện"><option value="auto">Giao diện: Tự động</option><option value="light">Giao diện: Sáng</option><option value="dark">Giao diện: Tối</option></select>
-    <details id="accdd" class="dd" hidden><summary id="accsum">Tài khoản quảng cáo</summary><div class="ddp" id="accpanel"></div></details>
-    <select id="preset">
-      <option value="yd">Hôm qua</option><option value="7">7 ngày qua</option><option value="14">14 ngày qua</option>
-      <option value="mtd" selected>Tháng này</option><option value="lm">Tháng trước</option>
-      <option value="qtd">Quý này</option><option value="lq">Quý trước</option>
-      <option value="ytd">Năm nay</option><option value="custom">Tùy chọn</option>
-    </select>
-    <span id="cu" hidden><input type="date" id="from"> – <input type="date" id="to"></span>
+<div class="app">
+<aside class="side" id="side">
+  <div class="brand" id="brand">Báo cáo kênh FB</div>
+  <nav id="nav">
+    <button class="nb on" data-page="total">📊 Báo cáo tổng</button>
+    <button class="nb" data-page="camp">🎯 Báo cáo chiến dịch</button>
+    <button class="nb" data-page="rev">💰 Báo cáo doanh thu</button>
+    <button class="nb" data-page="kpi">📈 Tiến độ KPI</button>
+    <button class="nb" data-page="refund">↩️ Báo cáo hoàn hủy</button>
+    <button class="nb" data-page="content">🖼️ Báo cáo content</button>
+  </nav>
+</aside>
+<div class="main">
+<header class="topbar">
+  <div class="top">
+    <div><h1>Báo cáo Facebook Ads</h1><div class="mu" id="upd">Đang tải…</div></div>
+    <div class="bar">
+      <select id="theme" title="Giao diện"><option value="auto">Giao diện: Tự động</option><option value="light">Giao diện: Sáng</option><option value="dark">Giao diện: Tối</option></select>
+      <details id="accdd" class="dd" hidden><summary id="accsum">Tài khoản quảng cáo</summary><div class="ddp" id="accpanel"></div></details>
+      <select id="preset">
+        <option value="yd">Hôm qua</option><option value="7">7 ngày qua</option><option value="14">14 ngày qua</option>
+        <option value="mtd" selected>Tháng này</option><option value="lm">Tháng trước</option>
+        <option value="qtd">Quý này</option><option value="lq">Quý trước</option>
+        <option value="ytd">Năm nay</option><option value="custom">Tùy chọn</option>
+      </select>
+      <span id="cu" hidden><input type="date" id="from"> – <input type="date" id="to"></span>
+    </div>
   </div>
+  <div class="accs" id="accs"></div>
+  <div id="err"></div>
+  <div id="notes"></div>
+  <div class="mu" id="rng"></div>
+</header>
+<main class="content" id="content">
+
+<section class="page" id="pg-total">
+  <div class="card" id="alerts"></div>
+
+  <div class="sec">Chỉ số tổng kênh</div>
+  <div class="grid" id="kpi"></div>
+
+  <div class="cols3">
+    <div class="col"><div class="coltitle">Chi tiêu tổng kênh</div><div id="col1"></div></div>
+    <div class="col"><div class="coltitle">Chi tiêu tổng kênh không gồm chiến dịch Branding</div><div id="col2"></div><div class="mu" id="realnote"></div></div>
+    <div class="col"><div class="coltitle">Chi tiêu tổng kênh theo Doanh thu chiến dịch quảng cáo</div><div id="col3"></div><div class="mu">Doanh thu chiến dịch là giá trị đơn mua hàng do Facebook ghi nhận qua Pixel hoặc Conversions API, không phải doanh thu thực.</div></div>
+  </div>
+
+  <div class="card"><h2>Chi tiêu và doanh thu thực tế theo ngày</h2>
+    <div style="position:relative;height:300px"><canvas id="ch"></canvas></div></div>
+</section>
+
+<section class="page" id="pg-camp" hidden>
+  <div class="card"><h2>Chi tiết theo
+    <select id="lv"><option value="campaign">chiến dịch</option><option value="adset">nhóm quảng cáo</option><option value="ad">quảng cáo</option></select>
+    <span class="mu" style="font-weight:400;margin-left:8px">Hiển thị <select id="tbsize"><option value="5" selected>5</option><option value="10">10</option><option value="20">20</option></select> dòng mỗi trang</span></h2>
+    <div class="sc" id="tb"></div>
+    <div id="tbpager"></div>
+    <div class="mu" style="margin-top:6px">* Tiếp cận được cộng từ từng ngày nên cao hơn số người thực tế. Xếp theo chi tiêu giảm dần. Doanh thu Pixel và ROAS Pixel là số do Facebook ghi nhận ở từng chiến dịch, nhóm quảng cáo hoặc quảng cáo, không phải doanh thu thực trong tab Doanh_thu.</div></div>
+</section>
+
+<section class="page" id="pg-rev" hidden>
+  <div id="rv"></div>
+</section>
+
+<section class="page" id="pg-kpi" hidden>
+  <div id="kpisec"></div>
+</section>
+
+<section class="page" id="pg-refund" hidden>
+  <div class="sec">Đơn hoàn hủy</div>
+  <div class="grid" id="cancel"></div>
+  <div id="cancelnote"></div>
+
+  <div class="card"><h2>So sánh theo
+    <select id="unit"><option value="w">tuần</option><option value="m" selected>tháng</option><option value="q">quý</option><option value="y">năm</option></select></h2>
+    <div class="opts" id="cmpopts"></div>
+    <div class="sc" id="cmp"></div>
+    <div class="mu" style="margin-top:6px">Kỳ gần nhất có thể chưa đủ ngày nên số liệu thấp hơn là bình thường. % là thay đổi so với kỳ ngay trước. Số đơn thực = số đơn mua − số đơn hoàn hủy. ROAS và Chi tiêu / DT thực dùng cùng cột Chi tiêu tổng (theo hai ô tích).</div></div>
+</section>
+
+<section class="page" id="pg-content" hidden>
+  <div id="best"></div>
+</section>
+
+</main>
+<footer class="foot">
+  <div class="fbar"><span class="mu">Cách tô màu:</span><span class="pill p-ok">Xanh lá = tốt</span><span class="pill p-warn">Vàng = cần lưu ý</span><span class="pill p-bad">Đỏ = cần xem xét ngay</span><button class="lnk" id="legbtn">Chi tiết ▴</button></div>
+  <div class="mu" id="legend" hidden></div>
+</footer>
 </div>
-<div class="accs" id="accs"></div>
-<div id="err"></div>
-<div id="notes"></div>
-<div class="mu" id="rng" style="margin-bottom:8px"></div>
-<div class="card" id="alerts"></div>
-
-<div class="sec">Chỉ số tổng kênh</div>
-<div class="grid" id="kpi"></div>
-
-<div class="cols3">
-  <div class="col"><div class="coltitle">Chi tiêu tổng kênh</div><div id="col1"></div></div>
-  <div class="col"><div class="coltitle">Chi tiêu tổng kênh không gồm chiến dịch Branding</div><div id="col2"></div><div class="mu" id="realnote"></div></div>
-  <div class="col"><div class="coltitle">Chi tiêu tổng kênh theo Doanh thu chiến dịch quảng cáo</div><div id="col3"></div><div class="mu">Doanh thu chiến dịch là giá trị đơn mua hàng do Facebook ghi nhận qua Pixel hoặc Conversions API, không phải doanh thu thực.</div></div>
 </div>
-
-<div class="card"><h2>Chi tiêu và doanh thu thực tế theo ngày</h2>
-  <div style="position:relative;height:300px"><canvas id="ch"></canvas></div></div>
-
-<div class="card"><h2>Chi tiết theo
-  <select id="lv"><option value="campaign">chiến dịch</option><option value="adset">nhóm quảng cáo</option><option value="ad">quảng cáo</option></select>
-  <span class="mu" style="font-weight:400;margin-left:8px">Hiển thị <select id="tbsize"><option value="5" selected>5</option><option value="10">10</option><option value="20">20</option></select> dòng mỗi trang</span></h2>
-  <div class="sc" id="tb"></div>
-  <div id="tbpager"></div>
-  <div class="mu" style="margin-top:6px">* Tiếp cận được cộng từ từng ngày nên cao hơn số người thực tế. Xếp theo chi tiêu giảm dần. Doanh thu Pixel và ROAS Pixel là số do Facebook ghi nhận ở từng chiến dịch, nhóm quảng cáo hoặc quảng cáo, không phải doanh thu thực trong tab Doanh_thu.</div></div>
-
-<div id="rv"></div>
-
-<div class="sec">Đơn hoàn hủy</div>
-<div class="grid" id="cancel"></div>
-<div id="cancelnote"></div>
-
-<div class="card"><h2>So sánh theo
-  <select id="unit"><option value="w">tuần</option><option value="m" selected>tháng</option><option value="q">quý</option><option value="y">năm</option></select></h2>
-  <div class="opts" id="cmpopts"></div>
-  <div class="sc" id="cmp"></div>
-  <div class="mu" style="margin-top:6px">Kỳ gần nhất có thể chưa đủ ngày nên số liệu thấp hơn là bình thường. % là thay đổi so với kỳ ngay trước. Số đơn thực = số đơn mua − số đơn hoàn hủy. ROAS và Chi tiêu / DT thực dùng cùng cột Chi tiêu tổng (theo hai ô tích).</div></div>
-
-<div class="sec">Quảng cáo hiệu quả nhất trong kỳ đang xem</div>
-<div id="best"></div>
-
-<div class="card"><h2>Cách tô màu</h2><div class="mu" id="legend"></div></div>
 
 <script>
 /* ====== CẤU HÌNH: bạn có thể sửa các con số này ====== */
@@ -145,6 +209,7 @@ const CFG={
   ],
   CATEGORY_OTHER:'Sản phẩm khác',
   KPI_PRODUCT_CP_INCLUDES_VAT:true,   // CP KPI từng sản phẩm nhập trong tab KPI_FB đã gồm VAT (bảng sẽ chia cho 1,1 để so với "CP QC thực*" chưa VAT)
+  REPORT_NAME:'Báo cáo kênh FB',      // tên báo cáo hiển thị ở đầu menu trái
   VAT:0.10,                           // VAT cộng vào chi phí QC (ô "Cộng VAT" và các chỉ số "gồm VAT")
   OTHER_COST_PCT:0,                   // % hàng tặng & chi phí khác trên doanh thu (thẻ "Tổng CP / DT")
   KPI:{warn:0.85,costWarn:1.15},      // tiến độ >= mốc: xanh; >= 85% mốc: vàng; thấp hơn: đỏ. Chi phí <= KPI xanh; <= 115% KPI vàng; cao hơn đỏ
@@ -624,8 +689,7 @@ function revDims(a,b,pa,pb){
     if(j===pj){h+=costProductCard(pj,a,b)+catCard(pj,a,b,pa,pb)+costCatCard(pj,a,b);done=true}
   });
   if(!done)h+=costProductCard(-1,a,b)+catCard(-1,a,b,pa,pb)+costCatCard(-1,a,b);
-  h+=kpiSection(b,pj);
-  $('#rv').innerHTML=h;drawPies();
+  $('#rv').innerHTML=h;$('#kpisec').innerHTML=kpiSection(b,pj);drawPies();
 }
 function compare(){
   const u=$('#unit').value,m={};
@@ -703,10 +767,27 @@ function bestAds(a,b,cur,out){
 }
 const optHandler=e=>{const t=e.target;if(t&&t.dataset&&t.dataset.opt){COSTOPT[t.dataset.opt]=!!t.checked;render()}};
 $('#cmpopts').addEventListener('change',optHandler);
+$('#kpisec').addEventListener('change',optHandler);
 $('#best').addEventListener('change',e=>{const t=e.target;if(t&&t.id==='adsort'){ADSORT=t.value;if(ADCTX)bestAds(ADCTX.a,ADCTX.b,ADCTX.cur,[])}else optHandler(e)});
 $('#tbsize').addEventListener('change',()=>{TBSIZE=+$('#tbsize').value||5;TBPAGE=0;drawTb()});
 $('#tbpager').addEventListener('click',e=>{const t=e.target;if(!t||!t.dataset||!t.dataset.dir)return;TBPAGE=Math.max(0,TBPAGE+(+t.dataset.dir));drawTb()});
 $('#best').addEventListener('click',e=>{const t=e.target;if(!t||!t.dataset||!t.dataset.pg)return;ADPAGE[t.dataset.pg]=Math.max(0,(ADPAGE[t.dataset.pg]||0)+(+t.dataset.dir));drawAds()});
+/* ===== Menu trái: chuyển trang ===== */
+const PAGES=['total','camp','rev','kpi','refund','content'];
+let CURPAGE='total';
+function showPage(p,push){
+  if(!PAGES.includes(p))p='total';
+  CURPAGE=p;
+  PAGES.forEach(k=>{const el=$('#pg-'+k);if(el)el.hidden=(k!==p)});
+  document.querySelectorAll('#nav .nb').forEach(b=>b.classList.toggle('on',b.dataset.page===p));
+  const c=$('#content');if(c)c.scrollTop=0;
+  if(push){try{history.replaceState(null,'','#'+p)}catch(e){}}
+  (window.requestAnimationFrame||setTimeout)(()=>{if(chart&&chart.resize)chart.resize();PIES.forEach(x=>x.resize&&x.resize())});
+}
+$('#brand').textContent=CFG.REPORT_NAME;
+$('#nav').addEventListener('click',e=>{const t=e.target.closest?e.target.closest('[data-page]'):e.target;if(t&&t.dataset&&t.dataset.page)showPage(t.dataset.page,true)});
+$('#legbtn').addEventListener('click',()=>{const l=$('#legend');l.hidden=!l.hidden;$('#legbtn').textContent=l.hidden?'Chi tiết ▴':'Thu gọn ▾'});
+showPage((typeof location!=='undefined'?location.hash:'').replace('#',''),false);
 </script>
 </body>
 </html>
