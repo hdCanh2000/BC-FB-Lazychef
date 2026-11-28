@@ -101,6 +101,10 @@ th{font-size:12px;color:var(--mu);font-weight:600}
   .content{overflow:visible}
   .foot{position:sticky;bottom:0;z-index:40}
 }
+.vc{display:inline-flex;align-items:center;justify-content:flex-end;white-space:nowrap;gap:6px}
+.tr{font-size:11px;padding:0 6px;border-radius:8px;white-space:nowrap}
+.tr.nu{color:var(--mu)}
+#tbq{min-width:260px;margin-left:12px}
 .bestgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-bottom:8px}
 .bestgrid .card{margin:0}
 .bn{font-weight:600;word-break:break-word}
@@ -167,10 +171,11 @@ th{font-size:12px;color:var(--mu);font-weight:600}
 <section class="page" id="pg-camp" hidden>
   <div class="card"><h2>Chi tiết theo
     <select id="lv"><option value="campaign">chiến dịch</option><option value="adset">nhóm quảng cáo</option><option value="ad">quảng cáo</option></select>
-    <span class="mu" style="font-weight:400;margin-left:8px">Hiển thị <select id="tbsize"><option value="5" selected>5</option><option value="10">10</option><option value="20">20</option></select> dòng mỗi trang</span></h2>
+    <span class="mu" style="font-weight:400;margin-left:8px">Hiển thị <select id="tbsize"><option value="5" selected>5</option><option value="10">10</option><option value="20">20</option></select> dòng mỗi trang</span>
+    <input id="tbq" type="search" placeholder="Tìm theo tên hoặc ID, ví dụ 12in1" autocomplete="off"></h2>
     <div class="sc" id="tb"></div>
     <div id="tbpager"></div>
-    <div class="mu" style="margin-top:6px">* Tiếp cận được cộng từ từng ngày nên cao hơn số người thực tế. Xếp theo chi tiêu giảm dần. Doanh thu Pixel và ROAS Pixel là số do Facebook ghi nhận ở từng chiến dịch, nhóm quảng cáo hoặc quảng cáo, không phải doanh thu thực trong tab Doanh_thu.</div></div>
+    <div class="mu" style="margin-top:6px">* Tiếp cận được cộng từ từng ngày nên cao hơn số người thực tế. Xếp theo chi tiêu giảm dần. Doanh thu Pixel và ROAS Pixel là số do Facebook ghi nhận ở từng chiến dịch, nhóm quảng cáo hoặc quảng cáo, không phải doanh thu thực trong tab Doanh_thu. Tỷ lệ % bên phải mỗi số là thay đổi so với kỳ liền trước cùng độ dài: xanh = tốt lên, vàng = duy trì (thay đổi dưới ngưỡng), đỏ = xấu đi; chi tiêu chỉ hiện mức thay đổi (xám); "mới" = chưa có dữ liệu ở kỳ trước. Dòng Tổng cộng tất cả dòng khớp bộ lọc (thời gian, tài khoản, ô tìm kiếm), không chỉ các dòng của trang đang xem; Tiếp cận cộng từng dòng nên cao hơn số người thực tế.</div></div>
 </section>
 
 <section class="page" id="pg-rev" hidden>
@@ -222,6 +227,7 @@ const CFG={
   ],
   CATEGORY_OTHER:'Sản phẩm khác',
   KPI_PRODUCT_CP_INCLUDES_VAT:true,   // CP KPI từng sản phẩm nhập trong tab KPI_FB đã gồm VAT (bảng sẽ chia cho 1,1 để so với "CP QC thực*" chưa VAT)
+  TREND:{stable:5},                   // bảng chi tiết: thay đổi so với kỳ trước dưới mức này (%) = duy trì (vàng); tốt lên từ mức này = xanh; xấu đi từ mức này = đỏ
   REPORT_NAME:'Báo cáo kênh FB',      // tên báo cáo hiển thị ở đầu menu trái
   VAT:0.10,                           // VAT cộng vào chi phí QC (ô "Cộng VAT" và các chỉ số "gồm VAT")
   OTHER_COST_PCT:0,                   // % hàng tặng & chi phí khác trên doanh thu (thẻ "Tổng CP / DT")
@@ -425,7 +431,7 @@ function render(){
   $('#col3').innerHTML=cards(D_COL3,cur,prv,out);
   const brSpend=cur.spend-cur.spendNB;
   $('#realnote').textContent=`Chi tiêu Branding đã loại trong kỳ: ${f(brSpend)} (${BR.size} chiến dịch có chữ "${CFG.BRANDING_KEYWORD}" trong tên). Doanh thu thực lấy toàn bộ từ tab Doanh_thu.`;
-  chartDaily(a,b);levelTable(a,b);revDims(a,b,pa,pb);
+  chartDaily(a,b);levelTable(a,b,pa,pb);revDims(a,b,pa,pb);
   const defs=D_CANCEL.filter(d=>COL[d.need]>=0);
   $('#cancel').innerHTML=cards(defs,cur,prv,out);
   $('#cancelnote').innerHTML=defs.length?(COL.ord<0&&COL.canOrd>=0?'<div class="note st-warn">Chưa nhận diện được cột tổng số đơn trong tab Doanh_thu nên chưa tính được tỷ lệ đơn hoàn hủy.</div>':''):
@@ -445,6 +451,7 @@ function legend(){
   $('#legend').innerHTML=`<span class="pill p-ok">Xanh lá</span> điểm tốt · <span class="pill p-warn">Vàng</span> cần lưu ý · <span class="pill p-bad">Đỏ</span> cần xem xét ngay.<br>
   Chi tiêu / doanh thu (thực và chiến dịch quảng cáo): ≤${C.COST_RATIO.green}% xanh, đến ${C.COST_RATIO.red}% vàng, trên ${C.COST_RATIO.red}% đỏ. Tỷ lệ hoàn hủy: ≤${C.CANCEL_RATE.green}% xanh, đến ${C.CANCEL_RATE.red}% vàng, trên ${C.CANCEL_RATE.red}% đỏ.<br>
   Các chỉ số còn lại tô theo thay đổi so với kỳ liền trước: tốt lên từ ${C.CHANGE.warn}% là xanh, xấu đi từ ${C.CHANGE.warn}% là vàng, xấu đi từ ${C.CHANGE.alert}% là đỏ, thay đổi nhỏ hơn ${C.CHANGE.warn}% không tô màu. Chi tiêu chỉ hiển thị mức thay đổi, không tô màu. Với CPC, CPM, chi phí/tin nhắn, hoàn hủy thì giảm là tốt.<br>
+  Bảng chi tiết chiến dịch: % bên phải mỗi số so với kỳ liền trước cùng độ dài, xanh = tốt lên từ ${C.TREND.stable}%, vàng = duy trì (dưới ${C.TREND.stable}%), đỏ = xấu đi từ ${C.TREND.stable}%.<br>
   Các ngưỡng trên là ước lượng mặc định, sửa trong phần CFG ở đầu đoạn script của file index.html.<br>
   Cách đọc tab Doanh_thu: cột ngày = "${esc(RC[0]||'')}"; doanh thu = "${esc(RC[COL.rev]||'không có')}"; số đơn = "${esc(RC[COL.ord]||'không có')}"; đơn hoàn hủy = "${esc(RC[COL.canOrd]||'không có')}"; doanh thu hoàn hủy = "${esc(RC[COL.canRev]||'không có')}"; cột phân loại = ${DIMS.length?DIMS.map(i=>'"'+esc(RC[i])+'"').join(', '):'không có'}.`;
 }
@@ -464,25 +471,67 @@ function chartDaily(a,b){
       {label:'Doanh thu thực tế',type:'line',data:ds.map(d=>rv[d]||0),borderColor:'#16a34a',backgroundColor:'#16a34a',tension:.25,pointRadius:2}]},
     options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false}}});
 }
-let TBROWS=[],TBLV='campaign',TBPAGE=0,TBSIZE=5,TBSIG='';
-function levelTable(a,b){
-  const lv=$('#lv').value,ix={campaign:1,adset:2,ad:3}[lv],m={};
+let TBALL=[],TBPM={},TBN={},TBLV='campaign',TBPAGE=0,TBSIZE=5,TBSIG='',TBQ='';
+const TBM=[   // [tên cột, cách tính, định dạng, hướng tốt: true = tăng là tốt, false = giảm là tốt, null = không đánh giá]
+ ['Chi tiêu',o=>o.spend,v=>f(v),null],
+ ['Hiển thị',o=>o.impr,v=>f(v),true],
+ ['Tiếp cận*',o=>o.reach,v=>f(v),true],
+ ['Click link',o=>o.clicks,v=>f(v),true],
+ ['CTR link',o=>o.impr?o.clicks/o.impr*100:null,v=>F(v,2,'%'),true],
+ ['CPC link',o=>o.clicks?o.spend/o.clicks:null,v=>F(v),false],
+ ['ThruPlay',o=>o.thru,v=>f(v),true],
+ ['Tin nhắn',o=>o.msg,v=>f(v),true],
+ ['CP/tin nhắn',o=>o.msg?o.spend/o.msg:null,v=>F(v),false],
+ ['Bình luận',o=>o.cmt,v=>f(v),true],
+ ['Đơn Pixel',o=>o.pur,v=>f(v),true],
+ ['Doanh thu Pixel',o=>o.frev,v=>f(v),true],
+ ['ROAS Pixel',o=>o.spend?o.frev/o.spend:null,v=>F(v,2),true]
+];
+const zero9=()=>({spend:0,reach:0,impr:0,clicks:0,thru:0,msg:0,cmt:0,pur:0,frev:0});
+function aggLevelMap(a,b,ix){
+  const m={};
   for(const r of FB){if(r[0]<a||r[0]>b)continue;
-    const o=m[r[ix]]||(m[r[ix]]={spend:0,reach:0,impr:0,clicks:0,thru:0,msg:0,cmt:0,pur:0,frev:0});
+    const o=m[r[ix]]||(m[r[ix]]=zero9());
     o.spend+=r[4];o.reach+=r[5];o.impr+=r[6];o.clicks+=r[7];o.thru+=r[8];o.msg+=r[9];o.cmt+=r[10];o.pur+=r[11];o.frev+=r[12]}
-  TBROWS=Object.entries(m).sort((x,y)=>y[1].spend-x[1].spend);TBLV=lv;
+  return m;
+}
+const sumO=arr=>{const t=zero9();for(const e of arr)for(const k in t)t[k]+=e[1][k];return t};
+function trendHtml(pc,up,hasPrev){
+  if(!hasPrev)return '<span class="tr nu">mới</span>';
+  if(pc===null)return '<span class="tr nu">—</span>';
+  const txt=`${pc>=0?'▲':'▼'} ${f(Math.abs(pc),1)}%`;
+  if(up===null)return `<span class="tr nu">${txt}</span>`;
+  const st=Math.abs(pc)<CFG.TREND.stable?'warn':((up?pc>0:pc<0)?'ok':'bad');
+  return `<span class="tr p-${st}">${txt}</span>`;
+}
+function cellTr(cur,prv,m,hasPrev){
+  const x=m[1](cur),y=prv?m[1](prv):null;
+  return `<span class="vc"><span>${m[2](x)}</span>${trendHtml(pch(x,y),m[3],hasPrev!==undefined?hasPrev:!!prv)}</span>`;
+}
+function levelTable(a,b,pa,pb){
+  const lv=$('#lv').value,ix={campaign:1,adset:2,ad:3}[lv];
+  const cur=aggLevelMap(a,b,ix),prv=pa?aggLevelMap(pa,pb,ix):{};
+  TBALL=Object.entries(cur).sort((x,y)=>y[1].spend-x[1].spend);TBPM=prv;TBLV=lv;
+  const nm=NAMES[lv]||{};TBN={};
+  for(const k of [...Object.keys(cur),...Object.keys(prv)])TBN[k]=norm(nm[k]||k)+' '+norm(k);
   const sig=[a,b,lv,FB===FBALL?'all':[...SELACC].join(',')].join('|');
   if(sig!==TBSIG){TBPAGE=0;TBSIG=sig}
   drawTb();
 }
 function drawTb(){
-  const lv=TBLV,tot=TBROWS.length,pages=Math.max(1,Math.ceil(tot/TBSIZE));
+  const lv=TBLV,q=norm(TBQ).trim(),nm=NAMES[lv]||{},hit=k=>!q||(TBN[k]||'').includes(q);
+  const rows=TBALL.filter(e=>hit(e[0])),tot=rows.length,pages=Math.max(1,Math.ceil(tot/TBSIZE));
   TBPAGE=Math.max(0,Math.min(TBPAGE,pages-1));
-  const s0=TBPAGE*TBSIZE,rows=TBROWS.slice(s0,s0+TBSIZE);
-  $('#tb').innerHTML=tbl(['Tên','ID','Chi tiêu','Hiển thị','Tiếp cận*','Click link','CTR link','CPC link','ThruPlay','Tin nhắn','CP/tin nhắn','Bình luận','Đơn Pixel','Doanh thu Pixel','ROAS Pixel'],
-    rows.map(([k,o])=>[esc((NAMES[lv]||{})[k]||k),`<span class="mu">${esc(k)}</span>`,f(o.spend),f(o.impr),f(o.reach),f(o.clicks),
-      F(o.impr?o.clicks/o.impr*100:null,2,'%'),F(o.clicks?o.spend/o.clicks:null),f(o.thru),f(o.msg),F(o.msg?o.spend/o.msg:null),f(o.cmt),f(o.pur),f(o.frev),F(o.spend?o.frev/o.spend:null,2)]));
-  $('#tbpager').innerHTML=tot?`<div class="pager"><button data-dir="-1"${TBPAGE<=0?' disabled':''}>‹ Trước</button><span class="mu">Trang ${TBPAGE+1}/${pages} · dòng ${s0+1}-${s0+rows.length} / ${f(tot)}</span><button data-dir="1"${TBPAGE>=pages-1?' disabled':''}>Sau ›</button></div>`:'<div class="mu" style="text-align:center">Không có dữ liệu trong kỳ này</div>';
+  const s0=TBPAGE*TBSIZE,slice=rows.slice(s0,s0+TBSIZE);
+  const prevRows=Object.entries(TBPM).filter(e=>hit(e[0])),hd=['Tên','ID',...TBM.map(m=>m[0])];
+  if(!tot){
+    $('#tb').innerHTML=`<div class="note st-warn">${q?`Không có ${lv==='campaign'?'chiến dịch':lv==='adset'?'nhóm quảng cáo':'quảng cáo'} nào khớp "${esc(TBQ.trim())}" trong kỳ này.`:'Không có dữ liệu trong kỳ này.'}</div>`;
+    $('#tbpager').innerHTML='';return;
+  }
+  const body=slice.map(([k,o])=>{const p=TBPM[k];return [esc(nm[k]||k),`<span class="mu">${esc(k)}</span>`,...TBM.map(m=>cellTr(o,p,m))]});
+  const totRow=[`Tổng (${f(tot)} dòng)`,'',...TBM.map(m=>cellTr(sumO(rows),sumO(prevRows),m,prevRows.length>0))];
+  $('#tb').innerHTML=tblT(hd,body,totRow);
+  $('#tbpager').innerHTML=`<div class="pager"><button data-dir="-1"${TBPAGE<=0?' disabled':''}>‹ Trước</button><span class="mu">Trang ${TBPAGE+1}/${pages} · dòng ${s0+1}-${s0+slice.length} / ${f(tot)}${q?` (đang lọc "${esc(TBQ.trim())}")`:''}</span><button data-dir="1"${TBPAGE>=pages-1?' disabled':''}>Sau ›</button></div>`;
 }
 /* ===== Chi phí / doanh thu theo sản phẩm & danh mục ===== */
 const famOfName=nm=>{const n=norm(nm);if(CFG.PRODUCT_OTHER_KW.some(k=>n.includes(k)))return'OTHER';
@@ -784,6 +833,7 @@ $('#cmpopts').addEventListener('change',optHandler);
 $('#kpisec').addEventListener('change',optHandler);
 $('#best').addEventListener('change',e=>{const t=e.target;if(t&&t.id==='adsort'){ADSORT=t.value;if(ADCTX)bestAds(ADCTX.a,ADCTX.b,ADCTX.cur,[])}else optHandler(e)});
 $('#tbsize').addEventListener('change',()=>{TBSIZE=+$('#tbsize').value||5;TBPAGE=0;drawTb()});
+$('#tbq').addEventListener('input',()=>{TBQ=$('#tbq').value;TBPAGE=0;drawTb()});
 $('#tbpager').addEventListener('click',e=>{const t=e.target;if(!t||!t.dataset||!t.dataset.dir)return;TBPAGE=Math.max(0,TBPAGE+(+t.dataset.dir));drawTb()});
 $('#best').addEventListener('click',e=>{const t=e.target;if(!t||!t.dataset||!t.dataset.pg)return;ADPAGE[t.dataset.pg]=Math.max(0,(ADPAGE[t.dataset.pg]||0)+(+t.dataset.dir));drawAds()});
 /* ===== Menu trái: chuyển trang ===== */
